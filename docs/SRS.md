@@ -1,0 +1,157 @@
+# Cadre — Software Requirements Specification
+
+_v1.0 · 2026-09-16 · SDLC phase 1 (requirements). Design lives in `ARCHITECTURE.md`, verification
+in `TEST_PLAN.md`, sequencing in `ROADMAP.md`, status in `PROJECT_STATE.md`._
+
+## 1. The idea, refined
+
+The raw idea was: *an agentic AI that runs on free models — add any free model by pasting its API
+key — and that scales to an organisation, where many agents work as a company: some build, some
+review, some verify, some decide.*
+
+Three things in that sentence decide the whole design, so they are stated up front:
+
+1. **"Free" means rate limits, not money, are the binding constraint.** Every free tier caps
+   requests per minute, tokens per minute and requests per day, and a team of agents multiplies
+   calls. Groq's free `openai/gpt-oss-120b` allows 8,000 tokens a minute and 1,000 requests a
+   day; OpenRouter's `:free` models allow 20 a minute and 50 a day. A multi-agent platform on
+   free keys is therefore, first of all, a **quota-aware scheduler** that spreads work across
+   every key the owner has added and waits, falls back, or stops honestly when they run dry.
+2. **"Review" and "verification" only mean something if they are independent.** A reviewer on the
+   same model as the builder shares its blind spots. So a reviewer is routed to a *different
+   model family* whenever one is available, and when a check can be a program (tests, a schema,
+   a linter) the program decides — an LLM's approval never overrides a failing check.
+3. **"Decision making" must be auditable.** When several agents decide, their votes are
+   collected as strict JSON and **counted by code**, not summarised by a model, and dissent is
+   kept in the record.
+
+Refined statement: **Cadre is a self-hosted platform for running an organisation of AI agents —
+builders, reviewers, verifiers, deciders and managers — declared as an org chart in YAML, powered
+by whichever free model APIs the owner adds, and scheduled so a team stays inside every free
+tier.**
+
+## 2. Stakeholders and users
+
+| Who | Wants |
+|---|---|
+| **Solo builder** (the owner; a student on an 8 GB laptop) | A team of agents that can build and check a small project for ₹0/month |
+| **Team / organisation admin** | To define departments and roles once, share provider keys safely, cap spend and runs |
+| **Operator** watching a run | To see who did what, with which model, at what token cost, and to approve risky steps |
+| **Decision owner** | A recommendation with the options, the votes, the dissent and the reasoning |
+
+## 3. Scope
+
+**In scope (v0.1):** provider/key management, quota-aware routing, org-as-YAML, five
+collaboration patterns (pipeline, parallel, review loop, council vote, manager→workers), a
+per-run file workspace, named verification checks, human approval gates, persistence and
+resume, CLI, REST API with live event stream, a local web dashboard.
+
+**Out of scope (v0.1), deferred with reasons in `ROADMAP.md`:** multi-user accounts and SSO,
+container sandbox for checks, web browsing tools, vector memory across runs, a hosted SaaS
+deployment, fine-tuning models.
+
+## 4. Functional requirements
+
+IDs are referenced from `TEST_PLAN.md`; each requirement has at least one test.
+
+### FR-1 Providers and keys (BYOK)
+- **FR-1.1** Add a provider from a preset (Groq, Gemini, OpenRouter, Mistral, Cohere, NVIDIA,
+  Cloudflare, Z.ai, Hugging Face, Ollama, llama.cpp, LM Studio) or any OpenAI-compatible URL,
+  with only a key.
+- **FR-1.2** Keys are stored in the OS credential store (fallback: environment variables) and
+  **never** written to the config file, database, event log, API responses or terminal output.
+- **FR-1.3** Test a provider (reachability, key accepted) and list the models it serves today.
+- **FR-1.4** Each model carries a tier (`strong` / `fast`), a family, a tool protocol
+  (`native` / `json`) and rate limits (RPM, RPD, TPM, TPD), prefilled from the preset.
+- **FR-1.5** Models without native function calling still act, through a JSON tool protocol.
+
+### FR-2 Quota-aware routing
+- **FR-2.1** Before every call, estimate its tokens and check the chosen model's per-minute and
+  per-day windows; wait if it will fit soon, otherwise use another model.
+- **FR-2.2** Learn remaining quota from provider rate-limit headers.
+- **FR-2.3** On 429, cool that model for the provider's `retry-after` and fall back; on 401/403,
+  disable the provider for the session; on 5xx/network errors, back off and fall back.
+- **FR-2.4** A request larger than a model's whole per-minute budget is never sent to it.
+- **FR-2.5** Daily counters survive a restart.
+- **FR-2.6** When nothing can serve a call within the wait limit, fail with a message that names
+  each model and when it frees up.
+- **FR-2.7** A call may require a model family different from a named agent's (independence).
+  If none exists, proceed and **record that the review was not independent**.
+
+### FR-3 Organisation model
+- **FR-3.1** An org is one YAML file: agents (id, role, instructions, tier, tools, independence),
+  named checks, budget, and a workflow tree.
+- **FR-3.2** Validation rejects unknown agents, tools, checks, duplicate ids and bad templates
+  before any model is called, with the path of the error.
+- **FR-3.3** Ship templates: software team, decision board, startup company.
+
+### FR-4 Collaboration patterns
+- **FR-4.1 Agent step** — one agent, one task, tools, bounded turns.
+- **FR-4.2 Sequence** — steps in order; each can reference the previous output and named outputs.
+- **FR-4.3 Parallel** — steps concurrently (bounded), optionally joined by a synthesising agent.
+- **FR-4.4 Review loop** — builder → checks → reviewers (strict JSON verdicts) → feedback, up to N
+  rounds. Approved only if **every check passes** and the reviewer rule holds.
+- **FR-4.5 Council** — independent proposals → optional critique rounds → consolidated options →
+  strict-JSON votes → **deterministic tally** (majority / supermajority / unanimous / plurality)
+  → chair memo with dissent. Ties and failed quorums are broken by the chair and marked so.
+  Unparseable votes become recorded abstentions.
+- **FR-4.6 Manager** — manager emits a task plan (JSON DAG); the engine validates it (known
+  assignees, known dependencies, no cycles, size cap), runs ready tasks in parallel, optionally
+  reviews each, skips dependents of failed tasks, and has the manager integrate a final report.
+- **FR-4.7 Approval gate** — the run pauses until a human approves or rejects.
+
+### FR-5 Tools and workspace
+- **FR-5.1** Each run has its own workspace directory; file tools cannot escape it (absolute
+  paths, `..`, symlinks, drive letters are refused).
+- **FR-5.2** Every file write is versioned with the writing agent and a hash.
+- **FR-5.3** `run_check` runs only checks **named in the org file**; the model picks a name,
+  never a command. Checks run with secrets scrubbed from the environment, a timeout and an
+  output cap, and require an `exec` approval unless the run allows execution.
+- **FR-5.4** A shared team board: agents post notes; recent notes are shown to every agent.
+- **FR-5.5** `ask_human` pauses the agent until the operator answers.
+- **FR-5.6** An agent is offered only the tools its spec lists.
+
+### FR-6 Runs
+- **FR-6.1** Start a run with an org and a goal from CLI, API or dashboard.
+- **FR-6.2** Budgets per run: model calls, tokens, wall-clock minutes, parallelism. The run
+  stops with the name of the budget that stopped it.
+- **FR-6.3** Every model call, tool call, verdict, vote, plan and approval is an event.
+- **FR-6.4** Token usage is recorded per agent, per provider, per model.
+- **FR-6.5** A run interrupted by a crash or restart can be resumed; finished steps are not
+  re-run and not re-billed.
+- **FR-6.6** Runs can be cancelled.
+
+### FR-7 Interfaces
+- **FR-7.1** CLI covering providers, orgs, runs, approvals, quota and the server.
+- **FR-7.2** REST API with a streamed event feed.
+- **FR-7.3** Web dashboard: providers and quota, orgs, new run, run timeline, files, approvals.
+- **FR-7.4** An offline demo mode that exercises every pattern with no key.
+
+## 5. Non-functional requirements
+
+| ID | Requirement | Target |
+|---|---|---|
+| **NFR-1 Cost** | Runs entirely on free tiers | ₹0/month; token cost per run measured and shown |
+| **NFR-2 Footprint** | Fits this laptop (7.7 GB, ~1 GB free) | Server < 150 MB RSS; no local model needed |
+| **NFR-3 Security** | API bound to loopback, bearer token on every API call, Host header checked, no CORS; keys only in the OS store | Tests assert 401 without token and that no key value appears in events |
+| **NFR-4 Safety** | Model output never becomes a shell command; checks are declared, approved, time-limited | Tests for path escape, unknown check, exec approval |
+| **NFR-5 Reliability** | Crash → resume without repeating finished work | Resume test counts provider calls |
+| **NFR-6 Observability** | Every decision explainable from the event log | Events for routing choice, fallback, wait, verdict, tally |
+| **NFR-7 Portability** | Windows first, Linux/macOS compatible; Python 3.12+, `uv` | CI matrix (not yet run — no remote) |
+| **NFR-8 Honesty** | Model catalogues and free limits change; presets carry the date they were checked and are overridable | Preset table dated 2026-09-16 |
+| **NFR-9 Testability** | All behaviour testable with no network | Scripted provider; HTTP mocked with `httpx.MockTransport` |
+
+## 6. Constraints and assumptions
+
+- Hardware: i3-1215U, 7.7 GB single-channel RAM, no GPU. Local models run at ~3.4 tok/s (1.5B),
+  so they are a fallback, never the default.
+- Free-tier terms: Cadre respects each key's published limits and never creates accounts or
+  rotates several keys of one provider to evade a limit. Owners must follow each provider's
+  terms (some free tiers — Mistral's, for one — train on your data).
+- Free catalogues are volatile: Cerebras moved to a card-required trial and GitHub Models was
+  retired in July 2026. Presets are a starting point; `cadre provider models <id>` asks the
+  endpoint what it serves today.
+
+## 7. Objectives
+
+The measurable objectives are in `OBJECTIVES.md`, each with how it is met and the evidence.

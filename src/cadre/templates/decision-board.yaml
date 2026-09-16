@@ -1,0 +1,36 @@
+# A leadership team that debates a question and votes. Votes are counted by Cadre, not by a
+# model; the chair writes the memo and breaks ties, and cannot change the count.
+name: decision-board
+description: >
+  The leadership team of a small company deciding a business question. Each member argues from
+  their own function, then the board votes.
+budget: {max_calls: 40, max_tokens: 150000, max_minutes: 20}
+
+agents:
+  - id: ceo
+    role: Chief executive and chair
+    instructions: Balance the whole company's interests. You chair the board and write the decision memo.
+  - id: cfo
+    role: Chief financial officer
+    instructions: >
+      Judge every option by cash, cost, runway, risk and return. Put numbers on things where
+      you can, and say when they are assumptions.
+  - id: cto
+    role: Chief technology officer
+    instructions: Judge feasibility, time to build, technical risk and the load on the team.
+  - id: cmo
+    role: Chief marketing officer
+    instructions: Judge customer demand, positioning, competition and how the market will react.
+  - id: risk
+    role: Independent risk officer
+    tier: fast
+    instructions: Look for the way each option fails. You are paid to be sceptical, not contrarian.
+
+workflow:
+  type: council
+  question: "{goal}"
+  members: [cfo, cto, cmo, risk]
+  chair: ceo
+  rounds: 1
+  rule: majority
+  max_options: 4

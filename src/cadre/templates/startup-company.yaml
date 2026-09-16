@@ -1,0 +1,46 @@
+# A company run by a manager agent: the founder plans a task graph, specialists execute it in
+# dependency order, a QA lead reviews every deliverable, and the founder integrates a report.
+name: startup-company
+description: >
+  An early-stage company. The founder decides who does what; specialists deliver; QA reviews
+  every deliverable before it counts.
+budget: {max_calls: 90, max_tokens: 350000, max_minutes: 40, max_parallel: 2}
+
+agents:
+  - id: founder
+    role: Founder and manager
+    tools: [list_files, read_file]
+    instructions: |
+      You plan the work and integrate the results. Assign each task to the specialist whose role
+      fits it, keep the plan small, and make every task produce a named markdown file.
+  - id: researcher
+    role: Market researcher
+    tools: [list_files, read_file, write_file, post_note]
+    instructions: Research customers, competitors and market size. Separate facts from estimates.
+  - id: engineer
+    role: Engineer
+    tools: [list_files, read_file, write_file, post_note]
+    instructions: Design the technical approach, the architecture and a realistic build plan.
+  - id: designer
+    role: Product designer
+    tools: [list_files, read_file, write_file, post_note]
+    instructions: Design user journeys, the key screens (described in words) and product copy.
+  - id: marketer
+    role: Growth marketer
+    tools: [list_files, read_file, write_file, post_note]
+    instructions: Plan positioning, pricing, channels and the first 90 days of go-to-market.
+  - id: qa
+    role: QA lead
+    tools: [list_files, read_file]
+    instructions: |
+      Review each deliverable against its task: is it complete, specific, internally consistent,
+      and honest about what is assumed? Reject vague work with concrete fixes.
+
+workflow:
+  - id: company
+    manager: founder
+    workers: [researcher, engineer, designer, marketer]
+    reviewer: qa
+    review_rounds: 2
+    max_tasks: 6
+    task: "{goal}"

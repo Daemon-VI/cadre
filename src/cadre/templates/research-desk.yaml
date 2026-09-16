@@ -1,0 +1,46 @@
+# Three analysts work in parallel from different angles, an editor merges them, a fact-checker
+# on a different model family reviews the brief, and a human approves it.
+name: research-desk
+description: A research desk producing a balanced brief on a topic.
+budget: {max_calls: 50, max_tokens: 200000, max_minutes: 25, max_parallel: 3}
+
+agents:
+  - id: market
+    role: Market analyst
+    tier: fast
+    tools: [write_file]
+    instructions: Cover demand, players, pricing and trends. Mark estimates as estimates.
+  - id: tech
+    role: Technology analyst
+    tier: fast
+    tools: [write_file]
+    instructions: Cover how it works, its maturity, its constraints and what is likely to change.
+  - id: risk
+    role: Risk analyst
+    tier: fast
+    tools: [write_file]
+    instructions: Cover regulatory, ethical, operational and financial risks, with likelihood.
+  - id: editor
+    role: Editor
+    tools: [list_files, read_file, write_file]
+    instructions: Merge analyses into one clear brief. Resolve contradictions openly instead of hiding them.
+  - id: checker
+    role: Fact-checker
+    tools: [list_files, read_file]
+    instructions: Flag unsupported claims, contradictions and missing caveats. Approve only a brief you would sign.
+
+workflow:
+  - id: research
+    type: parallel
+    steps:
+      - {agent: market, title: market, task: "Analyse the market for: {goal}. Write market.md."}
+      - {agent: tech, title: technology, task: "Analyse the technology behind: {goal}. Write tech.md."}
+      - {agent: risk, title: risks, task: "Analyse the risks of: {goal}. Write risks.md."}
+  - id: brief
+    builder: editor
+    reviewers: [checker]
+    max_rounds: 2
+    task: |
+      Merge market.md, tech.md and risks.md into BRIEF.md (under 800 words) with an executive
+      summary, the key findings, the open questions and a recommendation.
+  - approval: "Publish BRIEF.md for: {goal}?"

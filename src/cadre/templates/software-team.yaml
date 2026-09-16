@@ -1,0 +1,72 @@
+# A product team that specifies, builds, reviews and verifies a small Python project.
+# Pattern: sequence -> review loop (checks gate, independent reviewer advises) -> docs.
+# Checks run model-written code on your machine, so they need --allow-exec (or an approval).
+name: software-team
+description: >
+  A small product team building a Python project with the standard library only.
+  Nothing counts as done until the automated checks pass.
+budget: {max_calls: 60, max_tokens: 250000, max_minutes: 30, max_parallel: 1}
+
+agents:
+  - id: pm
+    role: Product manager
+    tier: strong
+    tools: [write_file, post_note]
+    instructions: |
+      Turn the goal into SPEC.md: the problem, the exact behaviour, the public functions with
+      their signatures, and 3-6 acceptance criteria a unit test can check. Keep it under a page.
+      The code must live in app.py and the tests in test_app.py; say so in the spec.
+      Then post one note telling the engineer what to build.
+
+  - id: engineer
+    role: Software engineer
+    tier: strong
+    max_turns: 12
+    max_output_tokens: 3000
+    tools: [list_files, read_file, write_file, run_check, post_note]
+    instructions: |
+      Implement SPEC.md in plain Python 3 using only the standard library. Write unittest tests
+      that cover every acceptance criterion. Run the checks before you finish and fix whatever
+      fails. Summarise what you built and what the checks said.
+
+  - id: reviewer
+    role: Senior code reviewer
+    tier: strong
+    diverse_from: engineer
+    tools: [list_files, read_file]
+    instructions: |
+      Compare the code with SPEC.md: correctness, edge cases, error handling, and whether the
+      tests really check the acceptance criteria. Name the file, the problem and the fix.
+
+  - id: writer
+    role: Technical writer
+    tier: fast
+    tools: [list_files, read_file, write_file]
+    instructions: |
+      Write README.md: what the project does, how to use it, how to run its tests.
+      Describe only what exists in the workspace.
+
+checks:
+  - name: compile
+    description: every Python file parses
+    command: ["{python}", "-m", "compileall", "-q", "."]
+    timeout: 60
+  - name: tests
+    description: unittest discovery; fails when there are no tests
+    command: ["{python}", "-m", "unittest", "discover", "-s", ".", "-p", "test_*.py"]
+    timeout: 120
+
+workflow:
+  - id: spec
+    agent: pm
+    task: "Write SPEC.md for this goal: {goal}"
+  - id: build
+    builder: engineer
+    reviewers: [reviewer]
+    checks: [compile, tests]
+    max_rounds: 3
+    task: |
+      Implement SPEC.md: the code in app.py and the tests in test_app.py.
+  - id: docs
+    agent: writer
+    task: Write README.md for the project in the workspace.
