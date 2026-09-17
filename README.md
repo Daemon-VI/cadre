@@ -80,6 +80,27 @@ agent questions are asked in the terminal; add `--yes` to auto-approve gates, or
 Every run gets a workspace at `~/.cadre/runs/<run-id>/workspace/`, with every file version kept
 under `versions/`.
 
+## Finish an existing project
+
+```bash
+uv run cadre run project-finisher "Make the failing tests pass" --project C:\path\to\repo --allow-exec
+```
+
+Cadre works in a git worktree on a new branch `cadre/<run-id>` and commits each finished step
+there with your repository's own identity. Your working tree, current branch and uncommitted
+changes are never touched (a dirty tree is refused unless you pass `--allow-dirty`), and Cadre
+never merges or pushes. Checks come from the org file and from `.cadre/checks.yaml` as committed
+at the base commit, for example:
+
+```yaml
+checks:
+  - name: tests
+    command: ["{python}", "-m", "pytest", "-q"]
+```
+
+The run ends by printing the branch's commits, `git diff --stat`, and the commands to review or
+discard it. `cadre runs cleanup` removes finished worktrees and keeps their branches.
+
 ## Will it fit? Usage and forecasts
 
 ```bash
@@ -110,6 +131,7 @@ editor and validator; models and keys with live quota bars; pending approvals.
 | `software-team` | sequence → review loop → docs | PM writes a spec, engineer builds and tests, an independent reviewer checks it, `compile` and `tests` checks gate it, a writer documents it |
 | `decision-board` | council | CFO, CTO, CMO and a risk officer propose, critique, and vote; the CEO chairs, breaks ties and writes the memo |
 | `startup-company` | manager | A founder plans a task graph for researcher, engineer, designer and marketer; a QA lead reviews each deliverable |
+| `project-finisher` | Finish work in an existing repository (`--project`): lead plans, engineer edits, repo checks gate, independent reviewer, branch delivered |
 | `research-desk` | parallel → review loop → approval | Three analysts in parallel, an editor merges, a fact-checker reviews, a human approves |
 
 Copy one to edit: `uv run cadre org new my-team --from software-team`, then

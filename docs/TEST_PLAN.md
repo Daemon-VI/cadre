@@ -17,7 +17,7 @@ Every test runs with `CADRE_NO_KEYRING=1` and a temporary `CADRE_HOME`, so the s
 the real credential store or `~/.cadre`.
 
 ```bash
-uv run pytest -q          # 135 passed, 1 skipped, ~16 s on the i3-1215U (2026-09-17, after M8)
+uv run pytest -q          # 142 passed, 1 skipped, ~22 s on the i3-1215U (2026-09-17, after M9)
 uv run ruff check src tests
 ```
 
@@ -76,11 +76,11 @@ the `..` tests exercise.
 | FR-13 AC-13.2 ranges, search | `test_edit_tools::test_read_line_range`, `…search_is_capped_and_confined` | M8 ✅ |
 | FR-13 AC-13.3 repo map | `test_edit_tools::test_repo_map_lists_defs_and_respects_the_cap`, `…repo_map_of_cadre_itself_stays_under_the_default_cap`, `…agents_with_file_tools_get_the_map_others_get_the_listing` | M8 ✅ |
 | FR-13 AC-13.4 measured saving | `test_edit_tools::test_edit_saves_more_than_its_schema_costs` | M8 ✅ (estimator tokens; live pending M5) |
-| FR-8 AC-8.1–8.2 refusals | `test_project::test_non_repo_is_refused`, `…dirty_tree_is_refused_unless_allowed` | M9 |
-| FR-8 AC-8.3–8.4, 8.6 branch, commits, result | `test_project::test_run_commits_on_its_own_branch` | M9 |
-| FR-8 AC-8.5 repo checks from base, `.cadre/` protected | `test_project::test_repo_checks_come_from_the_base_commit`, `…agents_cannot_write_cadre_dir` | M9 |
-| FR-8 AC-8.7 resume on same branch | `test_project::test_resumed_project_run_keeps_its_branch` | M9 |
-| NFR-10 owner's tree untouched | `test_project::test_source_repo_is_untouched` | M9 |
+| FR-8 AC-8.1–8.2 refusals | `test_project::test_non_repo_is_refused`, `…dirty_tree_is_refused_unless_allowed` | M9 ✅ |
+| FR-8 AC-8.3–8.4, 8.6 branch, commits, result | `test_project::test_run_commits_on_its_own_branch_and_leaves_the_owner_alone`, `…engine_records_stay_out_of_the_repo_and_cleanup_keeps_the_branch` | M9 ✅ |
+| FR-8 AC-8.5 repo checks from base, `.cadre/` protected | `test_project::test_repo_checks_come_from_the_base_commit`, `…agents_cannot_write_cadre_dir` | M9 ✅ |
+| FR-8 AC-8.7 resume on same branch | `test_project::test_resumed_project_run_keeps_its_branch` | M9 ✅ |
+| NFR-10 owner's tree untouched | `test_project::test_run_commits_on_its_own_branch_and_leaves_the_owner_alone` (HEAD, branch, porcelain compared) | M9 ✅ |
 | FR-9 AC-9.1–9.2 park and resume | `test_multiday::test_daily_limit_parks_then_resumes_without_rebilling`, `…minute_limits_still_wait` | M10 |
 | FR-9 AC-9.3 cumulative budgets | `test_multiday::test_budgets_accumulate_across_resumes`, `…max_days_stops_the_run` | M10 |
 | NFR-11 honest forecasts | `test_forecast::test_no_history_is_labelled_estimated`, `…measured_history_uses_median_and_p90` | M7 ✅ |

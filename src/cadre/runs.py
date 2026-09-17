@@ -28,7 +28,17 @@ from .engine import (
     StepFailed,
     unapproved_steps,
 )
-from .org import OrgError, find_org_text, load_org_text
+from .org import CheckSpec, OrgError, find_org_text, load_org_text
+from .project import (
+    ProjectError,
+    commits_on_branch,
+    diff_stat,
+    ensure_worktree,
+    inspect,
+    remove_worktree,
+    repo_checks,
+    review_commands,
+)
 from .providers import ProviderError
 from .quota import QuotaBook
 from .router import Router
@@ -87,7 +97,8 @@ class RunManager:
 
     # ------------------------------------------------------------------ lifecycle
     def create(self, org: str, goal: str, options: RunOptions | None = None, *,
-               demo: bool = False, org_yaml: str | None = None) -> str:
+               demo: bool = False, org_yaml: str | None = None, project: str | None = None,
+               base: str | None = None, allow_dirty: bool = False) -> str:
         goal = (goal or "").strip()
         if not goal:
             raise ValueError("a run needs a goal")
@@ -98,7 +109,19 @@ class RunManager:
             source, text = find_org_text(org, self.home.orgs_dir)
         spec = load_org_text(text)
         opts = (options or RunOptions()).as_dict()
-        return self.store.create_run(spec.name, text, goal, {**opts, "demo": demo, "source": source})
+        extra: dict[str, Any] = {}
+        if project:
+            info = inspect(project, base, allow_dirty)  # refuses non-repos and dirty trees (AC-8.1/8.2)
+            extra["project"] = {**info.as_dict(), "checks": repo_checks(info.root, info.base)}
+        rid = self.store.create_run(spec.name, text, goal, {**opts, "demo": demo, "source": source, **extra})
+        if project:
+            self.store.update_run(rid, project_path=extra["project"]["root"],
+                                  base=extra["project"]["base"], branch=f"cadre/{rid}")
+            if extra["project"]["dirty"]:
+                self.store.add_event(rid, "project.dirty", data={
+                    "note": "the working tree had uncommitted changes; the run starts from "
+                            f"{extra['project']['base_label']} and does not see them"})
+        return rid
 
     async def execute(self, run_id: str, approver: Approver | None = None) -> dict[str, Any]:
         run = self.store.get_run(run_id)
@@ -115,13 +138,16 @@ class RunManager:
         store.heartbeat(run_id)
         try:
             org = load_org_text(run["org_yaml"])
+            project = None
+            if opts.get("project"):
+                org, project = self._prepare_project(run, org)
             router = self.router(bool(opts.get("demo")))
             if not router.usable():
                 hint = "; ".join(self.warnings) or "no providers are configured"
                 raise StepFailed(f"no usable model — {hint}. Add one with `cadre provider add groq`, "
                                  "or try the offline demo with --demo")
             ctx = RunContext(run_id, org, run["goal"], store, router,
-                             self.home.runs_dir / run_id, options, approver)
+                             self.home.runs_dir / run_id, options, approver, project=project)
             store.update_run(run_id, privacy="private" if ctx.private else "standard")
             ctx.emit("run.started", org=org.name, goal=run["goal"], resumed=resumed,
                      models=[m.key for m in router.usable(ctx.private)], warnings=self.warnings,
@@ -148,7 +174,7 @@ class RunManager:
             self._finish(run_id, status, error="server shut down" if self._shutting_down
                          else "cancelled by the operator")
             raise
-        except (ProviderError, StepFailed, OrgError, ValueError, KeyError) as e:
+        except (ProviderError, StepFailed, OrgError, ProjectError, ValueError, KeyError) as e:
             return self._finish(run_id, "failed", error=str(e) or type(e).__name__)
         except Exception as e:  # keep the run record honest even for our own bugs
             store.add_event(run_id, "run.crashed", data={"trace": traceback.format_exc()[-4000:]})
@@ -156,6 +182,21 @@ class RunManager:
         unapproved = unapproved_steps(store, run_id)
         status = "unapproved" if unapproved else "succeeded"
         return self._finish(run_id, status, result=out.text, unapproved=unapproved)
+
+    def _prepare_project(self, run: dict[str, Any], org):
+        """Create or reuse the worktree and merge the repository's checks into the org."""
+        p = run["options"]["project"]
+        workspace = self.home.runs_dir / run["id"] / "workspace"
+        how = ensure_worktree(p["root"], p["base"], run["branch"], workspace)
+        repo = [CheckSpec.model_validate(c) for c in p.get("checks", [])]
+        names = {c.name for c in org.checks}
+        merged = list(org.checks) + [c for c in repo if c.name not in names]
+        shadowed = sorted(c.name for c in repo if c.name in names)
+        self.store.add_event(run["id"], "project.worktree", data={
+            "how": how, "root": p["root"], "branch": run["branch"], "base": p["base"][:12],
+            "repo_checks": [c.name for c in repo], "shadowed_by_org": shadowed})
+        project = {"root": p["root"], "base": p["base"], "branch": run["branch"]}
+        return org.model_copy(update={"checks": merged}), project
 
     def _finish(self, run_id: str, status: str, *, error: str | None = None, result: str | None = None,
                 unapproved: list[str] | None = None) -> dict[str, Any]:
@@ -165,8 +206,24 @@ class RunManager:
             store.add_active_seconds(run_id, time.monotonic() - started)
         store.cancel_pending_approvals(run_id)
         totals = store.usage_totals(run_id)
+        run_dir = self.home.runs_dir / run_id
         summary = {**totals, "files": len(store.files(run_id)), "unapproved": unapproved or [],
-                   "workspace": str(self.home.runs_dir / run_id / "workspace")}
+                   "workspace": str(run_dir / "workspace")}
+        artifacts = sorted(p.name for p in (run_dir / "artifacts").glob("*")) if (run_dir / "artifacts").exists() else []
+        if artifacts:
+            summary["artifacts"] = [str(run_dir / "artifacts" / a) for a in artifacts]
+        row = store.get_run(run_id) or {}
+        if row.get("project_path") and row.get("branch"):
+            try:
+                summary["project"] = {
+                    "root": row["project_path"], "branch": row["branch"], "base": row["base"],
+                    "commits": commits_on_branch(row["project_path"], row["base"], row["branch"]),
+                    "diff_stat": diff_stat(row["project_path"], row["base"], row["branch"]),
+                    "review": review_commands(row["project_path"], row["base"], row["branch"],
+                                              run_dir / "workspace"),
+                }
+            except ProjectError as e:
+                summary["project"] = {"error": str(e)}
         store.update_run(run_id, status=status, error=error, result=result, summary=summary,
                          finished=time.time())
         store.add_event(run_id, "run.finished", data={"status": status, "error": error, **summary})
@@ -192,6 +249,24 @@ class RunManager:
         if task is not None:
             task.cancel()
         return True
+
+    def cleanup_candidates(self) -> list[dict[str, Any]]:
+        """Finished project runs whose worktree still exists."""
+        out = []
+        for r in self.store.project_runs():
+            ws = self.home.runs_dir / r["id"] / "workspace"
+            if r["status"] in TERMINAL and r["status"] != "interrupted" and (ws / ".git").is_file():
+                out.append({**r, "workspace": str(ws)})
+        return out
+
+    def cleanup(self, run_id: str) -> tuple[bool, str]:
+        run = self.store.get_run(run_id)
+        if not run or not run.get("project_path"):
+            return False, "not a project run"
+        ok, msg = remove_worktree(run["project_path"], self.home.runs_dir / run_id / "workspace")
+        if ok:
+            self.store.add_event(run_id, "project.cleaned", data={"branch_kept": run["branch"]})
+        return ok, msg
 
     def resumable(self, run_id: str) -> bool:
         run = self.store.get_run(run_id)

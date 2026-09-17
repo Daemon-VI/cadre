@@ -38,6 +38,7 @@ from .org import (
     SequenceStep,
     render,
 )
+from .project import PROTECTED, ProjectError, commit_all
 from .providers import ProviderError
 from .router import CallRequest, CallResult, Router
 from .store import Store
@@ -119,14 +120,20 @@ class BudgetMeter:
 class RunContext:
     def __init__(self, run_id: str, org: OrgSpec, goal: str, store: Store, router: Router,
                  run_dir: Path, options: RunOptions | None = None,
-                 approver: Approver | None = None, poll: float = 0.5):
+                 approver: Approver | None = None, poll: float = 0.5,
+                 project: dict[str, Any] | None = None):
         self.run_id, self.org, self.goal = run_id, org, goal
         self.store, self.router = store, router
         self.options = options or RunOptions()
         self.approver = approver
         self.poll = poll
+        self.run_dir = run_dir
+        #: set in project mode: root, base, branch (ADR-016)
+        self.project = project
+        self._commit_lock = asyncio.Lock()
         self.workspace = Workspace(
-            run_dir, on_write=lambda p, v, sha, n, a: store.add_file(run_id, p, v, sha, n, a))
+            run_dir, on_write=lambda p, v, sha, n, a: store.add_file(run_id, p, v, sha, n, a),
+            protected=PROTECTED if project else ())
         self.budget = BudgetMeter(org.budget)
         self.outputs: dict[str, str] = {}
         self.prev = ""
@@ -235,6 +242,39 @@ class RunContext:
             return answer
         return "(the operator did not answer; use your best judgement and state your assumption)"
 
+    # ------------------------------------------------------------------ project mode
+    def write_artifact(self, name: str, content: str) -> None:
+        """Engine-written records (plans, reports, decisions). In project mode they stay out of the
+        owner's repository and live beside the run instead."""
+        if not self.project:
+            self.workspace.write(name, content, "engine")
+            return
+        target = self.run_dir / "artifacts" / Path(name).name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        self.emit("artifact.written", path=str(target), name=target.name)
+
+    async def commit_step(self, path: str, text: str) -> None:
+        if not self.project:
+            return
+        first = next((ln.strip() for ln in (text or "").splitlines() if ln.strip()), "")
+        message = f"cadre({path}): {first}" if first else f"cadre({path})"
+        if len(message) > 72:
+            message = message[:71].rsplit(" ", 1)[0] + "…"
+        async with self._commit_lock:
+            try:
+                sha = await asyncio.to_thread(commit_all, self.workspace.root, message)
+            except ProjectError as e:
+                self.emit("project.commit_failed", step=path, error=str(e))
+                return
+        if sha:
+            self.emit("project.commit", step=path, sha=sha[:12], message=message)
+
+    def check_names(self, names: list[str]) -> list[str]:
+        if "all" in names:
+            return [c.name for c in self.org.checks]
+        return names
+
     # ------------------------------------------------------------------ tools
     def note_file(self, agent: str, step: str, path: str) -> None:
         self.emit("file.written", agent=agent, step=step, path=path)
@@ -250,9 +290,11 @@ class RunContext:
             known = ", ".join(c.name for c in self.org.checks) or "none"
             raise ValueError(f"no check called {name!r} (checks: {known})") from None
         if not self._exec_approved:
-            prompt = (f"Allow this run to execute its declared checks in the workspace "
-                      f"({self.workspace.root})? Model-written code will run as you. "
-                      f"First check: {name} = {' '.join(spec.command)}")
+            listed = "\n".join(f"  {c.name}: {' '.join(c.command)}" for c in self.org.checks)
+            where = (f"the worktree of {self.project['root']}" if self.project
+                     else str(self.workspace.root))
+            prompt = (f"Allow this run to execute its declared checks in {where}? "
+                      f"Model-written code will run as you. Checks:\n{listed}")
             ok, _ = await self.approve("exec", prompt, agent, step)
             if not ok:
                 result = CheckResult(name, False, None, "", 0.0,
@@ -465,6 +507,7 @@ class Engine:
             return StepOutput(text=hit[0], data=hit[1])
         out = await factory()
         self.store.put_step(self.ctx.run_id, path, out.text, out.data)
+        await self.ctx.commit_step(path, out.text)
         return out
 
     async def step(self, s: Any, path: str) -> StepOutput:
@@ -538,7 +581,7 @@ class Engine:
 
     async def run_checks(self, names: list[str], step: str) -> StepOutput:
         results = []
-        for n in names:
+        for n in self.ctx.check_names(names):
             r = await self.ctx.run_check(n, "engine", step)
             results.append(r.as_dict())
         return StepOutput(text="; ".join(f"{r['name']}: {'pass' if r['passed'] else 'FAIL'}"
@@ -713,8 +756,8 @@ class Engine:
         doc = f"# Decision: {chosen['title']}\n\n{memo.text}\n\n---\n\n{table}\n"
 
         async def record() -> StepOutput:
-            self.ctx.workspace.write("DECISION.md", doc, "engine")
-            self.ctx.workspace.write("decision.json", json.dumps(decision, indent=2), "engine")
+            self.ctx.write_artifact("DECISION.md", doc)
+            self.ctx.write_artifact("decision.json", json.dumps(decision, indent=2))
             return StepOutput(text="recorded")
 
         await self.cached(f"{path}/record", record)
@@ -941,7 +984,7 @@ class Engine:
             + ("" if r["approved"] or r["status"] != "done" else " (not approved)") for r in rows)
 
         async def record() -> StepOutput:
-            self.ctx.workspace.write("REPORT.md", report, "engine")
+            self.ctx.write_artifact("REPORT.md", report)
             return StepOutput(text="recorded")
 
         await self.cached(f"{path}/record", record)
@@ -973,7 +1016,7 @@ class Engine:
         if obj is None:
             raise StepFailed(f"{mgr.id} did not produce a valid plan: {'; '.join(errors) or 'no JSON'}")
         tasks, _ = validate_plan(obj, workers, max_tasks)
-        self.ctx.workspace.write("plan.json", json.dumps({"tasks": tasks}, indent=2), "engine")
+        self.ctx.write_artifact("plan.json", json.dumps({"tasks": tasks}, indent=2))
         self.ctx.emit("plan.created", agent=mgr.id, step=step,
                       tasks=[{k: t[k] for k in ("id", "title", "assignee", "depends_on")} for t in tasks])
         return StepOutput(text="\n".join(f"{t['id']}: {t['title']} -> {t['assignee']}" for t in tasks),

@@ -73,6 +73,9 @@ class RunIn(BaseModel):
     auto_approve: bool = False
     demo: bool = False
     privacy: str | None = None
+    project: str | None = None
+    base: str | None = None
+    allow_dirty: bool = False
 
 
 class ForecastIn(BaseModel):
@@ -366,7 +369,8 @@ def create_app(manager: RunManager, *, token: str | None = None,
             rid = manager.create(body.org or "", body.goal,
                                  RunOptions(allow_exec=body.allow_exec, auto_approve=body.auto_approve,
                                             privacy=body.privacy),
-                                 demo=body.demo, org_yaml=body.yaml)
+                                 demo=body.demo, org_yaml=body.yaml, project=body.project,
+                                 base=body.base, allow_dirty=body.allow_dirty)
         except OrgError as e:
             raise HTTPException(422, {"errors": e.errors}) from None
         except (FileNotFoundError, ValueError) as e:
@@ -387,6 +391,8 @@ def create_app(manager: RunManager, *, token: str | None = None,
         r["files"] = store.files(rid)
         r["approvals"] = store.approvals(rid)
         r["live"] = rid in manager.tasks
+        folder = home.runs_dir / rid / "artifacts"
+        r["artifacts"] = sorted(p.name for p in folder.glob("*")) if folder.exists() else []
         return r
 
     @app.get("/api/runs/{rid}/org", dependencies=secured)
@@ -438,6 +444,15 @@ def create_app(manager: RunManager, *, token: str | None = None,
             raise HTTPException(409, f"a {r['status']} run cannot be resumed")
         manager.start(rid)
         return {"id": rid, "resumed": True}
+
+    @app.get("/api/runs/{rid}/artifacts/{name}", dependencies=secured)
+    async def artifact(rid: str, name: str) -> PlainTextResponse:
+        run_or_404(rid)
+        folder = (home.runs_dir / rid / "artifacts").resolve()
+        target = (folder / name).resolve()
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", name) or target.parent != folder or not target.is_file():
+            raise HTTPException(404, "no such artifact")
+        return PlainTextResponse(target.read_text(encoding="utf-8", errors="replace"))
 
     @app.get("/api/runs/{rid}/files/{path:path}", dependencies=secured)
     async def file(rid: str, path: str) -> PlainTextResponse:

@@ -132,6 +132,35 @@ products: Yes"; Cloudflare: "All limits reset daily at 00:00 UTC", no training; 
 `qwen/qwen3.8-27b` on the free plan at 30 RPM / 1K RPD / 8K TPM / 200K TPD; DeepSeek's own API is
 paid and OpenRouter lists no DeepSeek `:free` model).
 
+### M9 — project mode — COMPLETE offline, 2026-09-17
+- **Worktree on its own branch (ADR-016)** — `cadre run <org> "<goal>" --project PATH [--base B]
+  [--allow-dirty]` (and the API's `project/base/allow_dirty`). A non-repo, a repo with no commits,
+  an unknown base and a dirty tree (without `--allow-dirty`) are refused before any model call.
+  The run works in `git worktree add <run>/workspace -b cadre/<run-id> <base>`. OK
+- **Owner untouched (NFR-10)** — test: HEAD, current branch (`feature/owner-work`) and
+  `git status --porcelain` identical before and after, and the owner's `calc.py` unchanged while
+  the branch carries the fix. From the CLI on a throwaway repo: `main` still checked out, porcelain
+  empty, branch delivered. OK
+- **Per-step commits** — after each finished step that changed files:
+  `cadre(<step path>): <first line of the output>`, the repository's own identity, hooks and
+  signing, no trailers (test checks author, subject, and the absence of `Co-authored`). OK
+- **Repo checks from the base commit** — `.cadre/checks.yaml` is read with `git show <base>:…`
+  at creation; editing it in the working tree afterwards changed nothing (test). Agents cannot
+  write or edit anything under `.cadre/` in project mode. `checks: [all]` means every declared
+  check; the exec approval now lists every check command and where it will run. OK
+- **Records stay out of the repo** — `plan.json`, `REPORT.md`, `DECISION.md` go to
+  `<run>/artifacts/` (API `GET /api/runs/{id}/artifacts/{name}`), not onto the branch. OK
+- **Resume** — a project run that failed at step 2 resumed on the same branch and worktree (event
+  `project.worktree: reused`); the branch ended with exactly two commits. OK
+- **Result and cleanup** — the summary carries the branch, its commits, `git diff --stat
+  base...branch`, and the review/discard commands the CLI prints. `cadre runs cleanup [--yes]`
+  removes finished runs' worktrees without `--force` and keeps their branches. OK
+- **`project-finisher` template** — lead plans (manager step), engineer edits with the M8 tools,
+  repo checks gate each task, a reviewer on another family advises, lead reports. Demo run on a
+  fixture with a failing test: status `unapproved` because the unit check failed — checks gate.
+- Tests: **142 passed, 1 skipped, 22.4 s** (git fixtures add ~6 s); ruff clean. A real model
+  finishing a real repository is **unverified until M11**.
+
 ### M8 — code-editing tools and repo map — COMPLETE offline, 2026-09-17
 - **`edit_file`** (exactly one exact match, else an error that gives the count; CRLF files accept
   plain-newline edits; versioned like writes), **`read_file` line ranges**, **`search`** (regex or
@@ -207,8 +236,8 @@ second model family on the one free key (reviews can be independent).
    run it yourself with a leading `!`:
    `! cd /c/Users/Rishi/cadre && uv run cadre provider add groq` (it finds the copied key; no
    prompt), then the four template runs listed under M5 in `ROADMAP.md`. Record the numbers here.
-2. Meanwhile the offline milestones continue: M6–M8 done → **M9** (project mode) → M10, each
-   committed as `Cadre M<n>: …`. After M5, re-check the M7 template estimates
+2. Meanwhile the offline milestones continue: M6–M9 done → **M10** (multi-day runs), committed
+   as `Cadre M10: …`. After M5, re-check the M7 template estimates
    against the measured runs.
 3. Look at the dashboard in a browser (Chrome extension was not connected on 2026-09-16).
 

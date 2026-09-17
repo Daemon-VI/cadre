@@ -53,7 +53,7 @@ measurement.
 
 That arithmetic produced the rules the code follows:
 
-1. **Few tools, offered per agent.** There are six tools and an agent sees only those its spec
+1. **Few tools, offered per agent.** There are eight tools (six in v0.1; `edit_file` and `search` were added in M8 on measured savings) and an agent sees only those its spec
    lists, because every schema is re-sent on every call. A new tool has to be used often enough
    to pay for its schema; anything rarer belongs inside an existing tool.
 2. **Context that nearly everyone needs is injected, not fetched.** The workspace listing (≤ 40

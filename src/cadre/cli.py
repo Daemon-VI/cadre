@@ -36,6 +36,7 @@ from .engine import RunOptions
 from .forecast import estimate, forecast, usage_ledger
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
+from .project import ProjectError
 from .providers import ProviderError
 from .runs import RunManager
 from .secrets import SecretStore, env_name
@@ -50,9 +51,11 @@ for stream in (sys.stdout, sys.stderr):  # Windows consoles default to a legacy 
 app = typer.Typer(help="Cadre — run an organisation of AI agents on free model APIs.",
                   no_args_is_help=True, add_completion=False)
 provider_app = typer.Typer(help="Model providers and their keys.", no_args_is_help=True)
+runs_app = typer.Typer(help="Recent runs, and cleanup of finished project worktrees.")
 org_app = typer.Typer(help="Organisation files.", no_args_is_help=True)
 app.add_typer(provider_app, name="provider")
 app.add_typer(org_app, name="org")
+app.add_typer(runs_app, name="runs")
 con = Console(highlight=False)
 
 
@@ -565,6 +568,23 @@ def _report(h: Home, run: dict[str, Any]) -> None:
         con.print(f"Workspace: {s.get('workspace')}")
         if s.get("unapproved"):
             con.print(f"[yellow]Not approved: {', '.join(s['unapproved'])}[/]")
+    for path in s.get("artifacts", []):
+        con.print(f"Record: {path}")
+    p = s.get("project")
+    if p and not p.get("error"):
+        con.print(f"\nBranch [bold]{p['branch']}[/] in {p['root']} — {len(p['commits'])} commit(s):",
+                  highlight=False)
+        for c in p["commits"][:20]:
+            con.print(f"  {c}", markup=False)
+        if p["diff_stat"]:
+            con.print(p["diff_stat"], markup=False)
+        con.print("Review it:", markup=False)
+        con.print(f"  {p['review']['log']}\n  {p['review']['diff']}", markup=False)
+        con.print("Throw it away:", markup=False)
+        con.print(f"  {p['review']['discard']}", markup=False)
+        con.print("[dim]Cadre never merges or pushes; the branch is yours to review.[/]")
+    elif p:
+        con.print(f"[yellow]{p['error']}[/]")
     if run["status"] in ("interrupted", "failed", "stopped", "cancelled", "unapproved"):
         con.print(f"Resume with: cadre resume {run['id']}")
 
@@ -578,6 +598,11 @@ def run(
     demo: bool = typer.Option(False, "--demo", help="offline scripted model; no key needed"),
     private: bool = typer.Option(False, "--private",
                                  help="never use a provider whose free tier trains on prompts"),
+    project: str | None = typer.Option(None, "--project",
+                                       help="an existing git repository to work on (a branch is delivered)"),
+    base: str | None = typer.Option(None, "--base", help="branch or commit to start from (default HEAD)"),
+    allow_dirty: bool = typer.Option(False, "--allow-dirty",
+                                     help="start from HEAD even if the working tree has uncommitted changes"),
     wait_elsewhere: bool = typer.Option(False, "--approve-elsewhere",
                                         help="leave approvals to the dashboard / `cadre approve`"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
@@ -589,8 +614,8 @@ def run(
     try:
         run_id = manager.create(org, goal, RunOptions(allow_exec=allow_exec, auto_approve=yes,
                                                       privacy="private" if private else None),
-                                demo=demo)
-    except (OrgError, FileNotFoundError, ValueError) as e:
+                                demo=demo, project=project, base=base, allow_dirty=allow_dirty)
+    except (OrgError, FileNotFoundError, ProjectError, ValueError) as e:
         fail(str(e))
     con.print(f"Run [bold]{run_id}[/] · {org}{' · demo mode' if demo else ''}")
     if not quiet:
@@ -626,9 +651,11 @@ def resume(run_id: str,
     raise typer.Exit(0 if result["status"] == "succeeded" else 1)
 
 
-@app.command()
-def runs(limit: int = 20) -> None:
+@runs_app.callback(invoke_without_command=True)
+def runs(ctx: typer.Context, limit: int = 20) -> None:
     """Recent runs."""
+    if ctx.invoked_subcommand:
+        return
     store = Store(home().db_path)
     store.mark_stale_interrupted()
     t = Table()
@@ -638,6 +665,24 @@ def runs(limit: int = 20) -> None:
         t.add_row(r["id"], r["org"], r["status"], str(r["calls"]),
                   str(r["prompt_tokens"] + r["completion_tokens"]), r["goal"][:60])
     con.print(t)
+
+
+@runs_app.command("cleanup")
+def runs_cleanup(yes: bool = typer.Option(False, "--yes", "-y", help="do not ask for confirmation")) -> None:
+    """Remove the git worktrees of finished project runs. Their branches are kept for review."""
+    manager = RunManager(home())
+    items = manager.cleanup_candidates()
+    if not items:
+        con.print("No finished project runs have a worktree left.")
+        return
+    for r in items:
+        con.print(f"{r['id']}  {r['status']:<11} {r['branch']}  in {r['project_path']}", markup=False)
+    if not yes and not typer.confirm(f"Remove {len(items)} worktree(s)? Branches are kept.", default=False):
+        con.print("Nothing removed.")
+        return
+    for r in items:
+        ok, msg = manager.cleanup(r["id"])
+        con.print(f"{r['id']}: {msg}", markup=False)
 
 
 @app.command()

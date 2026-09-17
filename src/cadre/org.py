@@ -197,6 +197,13 @@ def _walk(step: Any, path: str):
         yield from _walk(child, f"{path}.steps[{i}]")
 
 
+def _uses_all_checks(step: Any) -> bool:
+    """`checks: [all]` means "whatever checks the org and the target project declare"."""
+    if "all" in (getattr(step, "checks", None) or []):
+        return True
+    return any(_uses_all_checks(s) for s in getattr(step, "steps", []) or [])
+
+
 def _check_refs(org: OrgSpec) -> list[str]:
     errs: list[str] = []
     ids = [a.id for a in org.agents]
@@ -212,7 +219,7 @@ def _check_refs(org: OrgSpec) -> list[str]:
             if t not in KNOWN_TOOLS:
                 errs.append(f"agents[{i}] ({a.id}).tools: unknown tool {t!r} "
                             f"(known: {', '.join(KNOWN_TOOLS)})")
-        if "run_check" in a.tools and not org.checks:
+        if "run_check" in a.tools and not org.checks and not _uses_all_checks(org.workflow):
             errs.append(f"agents[{i}] ({a.id}).tools: run_check needs at least one entry in checks")
         for d in a.diverse_from:
             if d not in agents:
@@ -224,7 +231,7 @@ def _check_refs(org: OrgSpec) -> list[str]:
 
     def need_checks(names: list[str], where: str) -> None:
         for n in names:
-            if n not in checks:
+            if n != "all" and n not in checks:
                 errs.append(f"{where}: unknown check {n!r}")
 
     step_ids: list[str] = []

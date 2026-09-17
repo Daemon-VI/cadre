@@ -149,6 +149,10 @@ class Store:
             r.update(self.usage_totals(r["id"]))
         return rows
 
+    def project_runs(self) -> list[dict[str, Any]]:
+        return self._all("SELECT id, org, status, project_path, branch, base, created FROM runs "
+                         "WHERE project_path IS NOT NULL ORDER BY created")
+
     def mark_stale_interrupted(self) -> list[str]:
         """Active runs whose owner stopped heartbeating were interrupted by a crash or restart."""
         cutoff = time.time() - STALE_AFTER

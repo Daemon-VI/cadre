@@ -34,8 +34,11 @@ OnWrite = Callable[[str, int, str, int, str], None]  # path, version, sha256, by
 
 
 class Workspace:
-    def __init__(self, run_dir: Path, on_write: OnWrite | None = None):
+    def __init__(self, run_dir: Path, on_write: OnWrite | None = None,
+                 protected: tuple[str, ...] = ()):
         self.root = run_dir / "workspace"
+        #: top-level names agents may read but never write (project mode: `.cadre`, ADR-016)
+        self.protected = protected
         self.versions_dir = run_dir / "versions"
         self.root.mkdir(parents=True, exist_ok=True)
         self.versions_dir.mkdir(parents=True, exist_ok=True)
@@ -120,8 +123,15 @@ class Workspace:
             return text[:max_chars] + f"\n… [truncated: {len(text) - max_chars} more characters]"
         return text
 
+    def _guard(self, name: str) -> None:
+        top = name.split("/", 1)[0]
+        if top in self.protected:
+            raise WorkspaceError(f"{name}: files under {top}/ are the owner's configuration and "
+                                 "cannot be changed by agents")
+
     def edit(self, rel: str, old: str, new: str, agent: str) -> dict[str, object]:
         """Replace exactly one exact occurrence of `old` (FR-13, ADR-021)."""
+        self._guard(self.resolve(rel)[1])
         if not isinstance(old, str) or not old:
             raise WorkspaceError("`old` must be the exact, non-empty text to replace")
         if not isinstance(new, str):
@@ -173,6 +183,7 @@ class Workspace:
 
     def write(self, rel: str, content: str, agent: str) -> dict[str, object]:
         target, name = self.resolve(rel)
+        self._guard(name)
         if not isinstance(content, str):
             raise WorkspaceError("content must be text")
         data = content.encode("utf-8")

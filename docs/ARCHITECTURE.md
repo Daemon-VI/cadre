@@ -138,7 +138,7 @@ model calls, tokens, minutes, parallelism. Manager plans: `max_tasks`. Review lo
 `max_rounds`. A looping model stops with the name of the limit it hit.
 
 ### ADR-014 — Few tools, because tools cost tokens on every call
-Six tools exist and an agent sees only those its spec lists (Tessera measured 100–230 tokens per
+Six tools existed in v0.1 (eight since ADR-021) and an agent sees only those its spec lists (Tessera measured 100–230 tokens per
 schema per call). Team notes and the workspace listing are injected into the prompt instead of
 being tools, since nearly every agent needs them.
 

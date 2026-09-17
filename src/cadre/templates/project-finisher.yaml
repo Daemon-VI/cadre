@@ -1,0 +1,50 @@
+# Finishes work in an EXISTING git repository and hands back a branch (project mode, ADR-016).
+#   cadre run project-finisher "Make the failing tests pass" --project C:\path\to\repo
+# The lead reads the repo map and plans; the engineer changes files with targeted edits; the
+# repository's own checks (.cadre/checks.yaml at the base commit) gate every task; a reviewer on a
+# different model family advises; the lead writes the report. Cadre commits each finished step on
+# cadre/<run-id> and never touches your working tree, never merges and never pushes.
+name: project-finisher
+description: >
+  A small team that finishes a piece of work in an existing repository and delivers it as a branch
+  for the owner to review.
+budget: {max_calls: 80, max_tokens: 300000, max_minutes: 40, max_parallel: 1}
+
+agents:
+  - id: lead
+    role: Tech lead
+    tools: [list_files, read_file, search]
+    instructions: |
+      Read the repo map and the code that matters before you plan. Plan a few concrete changes,
+      each naming the files to change, what to change, and how the checks will show it works.
+      Follow the conventions the repository already uses.
+
+  - id: engineer
+    role: Software engineer
+    max_turns: 14
+    max_output_tokens: 3000
+    tools: [list_files, read_file, search, edit_file, write_file, run_check, post_note]
+    instructions: |
+      Make the planned change in the existing code. Use search and line-range reads to find the
+      code, and edit_file for changes to existing files; write_file only for new files. Match the
+      repository's style. Run the checks and fix what fails before you finish, and say plainly
+      what still fails.
+
+  - id: reviewer
+    role: Code reviewer
+    diverse_from: engineer
+    tools: [list_files, read_file, search]
+    instructions: |
+      Check the change against the task and the repository's conventions: correctness, edge
+      cases, tests that really test it, nothing unrelated changed. Name the file, the problem and
+      the fix.
+
+workflow:
+  - id: finish
+    manager: lead
+    workers: [engineer]
+    reviewer: reviewer
+    checks: [all]
+    review_rounds: 2
+    max_tasks: 4
+    task: "{goal}"
