@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-17 (v0.1.0 + v1.0 programme in progress)_
+_Last updated: 2026-09-17 (v0.1.0 + v1.0 programme: M6–M10 done offline; M5 and M11 blocked)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -102,6 +102,14 @@ not borrowed without asking)._
 - Starlette warns that its TestClient's `httpx` backend is deprecated; harmless for now.
 
 ## v1.0 programme (started 2026-09-17)
+
+**Headline (end of 2026-09-17):** requirements, design and plan written; M6 catalogue/clocks/privacy,
+M7 ledger/forecast, M8 edit tools/repo map, M9 project mode, M10 multi-day runs all built and
+tested offline — **150 passed, 1 skipped, 24.5 s**, ruff clean, commits `1547bd3`…`90a776d`, no
+remote (push skipped). **Still no live model call has ever been made**, so everything that depends
+on real model behaviour (JSON shapes, repair rates, `edit_file` accuracy, token estimates, real
+429s and headers) is unverified. M5 and M11 are blocked on a session permission, not on a key.
+`git grep` for key prefixes finds only the four fake fixtures in `tests/`.
 
 `docs/MASTER_PROMPT.md` turns Rithik's restated idea — *build or finish a project on free keys
 only, across every provider, managing each model's usage* — into milestones M5–M11.
@@ -254,14 +262,26 @@ rule — so no live call has been made. The Groq preset now includes `qwen/qwen3
 second model family on the one free key (reviews can be independent).
 
 ## Where to pick up
-1. **Unblock M5** (Rithik): in Claude Code run `/permissions` and allow `Bash(uv run cadre:*)`, or
-   run it yourself with a leading `!`:
-   `! cd /c/Users/Rishi/cadre && uv run cadre provider add groq` (it finds the copied key; no
-   prompt), then the four template runs listed under M5 in `ROADMAP.md`. Record the numbers here.
-2. Meanwhile the offline milestones continue: M6–M9 done → **M10** (multi-day runs), committed
-   as `Cadre M10: …`. After M5, re-check the M7 template estimates
-   against the measured runs.
-3. Look at the dashboard in a browser (Chrome extension was not connected on 2026-09-16).
+1. **Unblock M5 (Rithik).** The Groq key is already in Windows Credential Manager (copied from
+   Tessera on 2026-09-17, never printed). This session's auto-mode classifier refused every
+   command that reads it. Either add an allow rule with `/permissions` → `Bash(uv run cadre:*)`,
+   or run the commands yourself with a leading `!`:
+   ```
+   ! cd /c/Users/Rishi/cadre && uv run cadre provider add groq
+   ! cd /c/Users/Rishi/cadre && uv run cadre forecast decision-board "Should a two-person team build a budgeting app or a notes app first?"
+   ! cd /c/Users/Rishi/cadre && uv run cadre run decision-board "Should a two-person team build a budgeting app or a notes app first?" --yes
+   ```
+   Adding Gemini (`uv run cadre provider add gemini`) as well gives a third family and ten more
+   buckets.
+2. **M5 measurements** — run the five templates (`software-team --allow-exec`, `decision-board`,
+   `startup-company`, `research-desk --yes`, `project-finisher` on a scratch fixture repo) and
+   record calls, tokens, median fixed prompt, repairs, waits/fallbacks/429s, which model served
+   each role, and independence. Then compare with the M7 template estimates, check whether free
+   models use `edit_file` correctly (M8), and measure server RSS while a run streams.
+3. **M11 capstone** in `~/.cadre/capstone/` (a new CLI via `software-team`; a half-built fixture
+   repo via `project-finisher`), then `claim-auditor`, version 1.0.0, `CHANGELOG.md`, tag `v1.0.0`.
+4. Look at the dashboard in a browser (Usage page and parked runs are new and unseen).
+5. Decide whether to install the resume scheduler (`uv run cadre scheduler install` asks first).
 
 ## Environment
 `cd C:\Users\Rishi\cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`
