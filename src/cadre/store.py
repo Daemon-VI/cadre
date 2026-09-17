@@ -213,6 +213,25 @@ class Store:
         row = self._one("SELECT requests, tokens FROM quota_daily WHERE key=? AND day=?", (key, day))
         return (row["requests"], row["tokens"]) if row else (0, 0)
 
+    def quota_rows(self, since_day: str) -> list[dict[str, Any]]:
+        """Every counter row whose day key starts on or after `since_day` (YYYY-MM-DD)."""
+        return self._all("SELECT key, day, requests, tokens FROM quota_daily WHERE substr(day, 1, 10) >= ? "
+                         "ORDER BY day", (since_day,))
+
+    def history(self, org: str, statuses: tuple[str, ...]) -> list[dict[str, Any]]:
+        """Finished runs of an org with their usage totals — the forecast's measured basis."""
+        marks = ",".join("?" * len(statuses))
+        rows = self._all(f"SELECT id, status, options, active_seconds, created FROM runs "
+                         f"WHERE org=? AND status IN ({marks}) ORDER BY created", (org, *statuses))
+        for r in rows:
+            r["options"] = _loads(r["options"]) or {}
+            r.update(self.usage_totals(r["id"]))
+        return rows
+
+    def add_active_seconds(self, rid: str, seconds: float) -> None:
+        self._x("UPDATE runs SET active_seconds = COALESCE(active_seconds, 0) + ? WHERE id=?",
+                (max(0.0, seconds), rid))
+
     def quota_save(self, key: str, day: str, requests: int, tokens: int) -> None:
         self._x("INSERT OR REPLACE INTO quota_daily(key, day, requests, tokens) VALUES(?,?,?,?)",
                 (key, day, requests, tokens))

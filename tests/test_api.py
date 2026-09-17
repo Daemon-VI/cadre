@@ -123,3 +123,17 @@ def test_approvals_can_be_decided_once(client):
     assert wait_for(client, rid)["status"] == "succeeded"
     decided = [e for e in client.get(f"/api/runs/{rid}/events").json() if e["kind"] == "approval.decided"]
     assert json.dumps(decided[0]["data"]).count("true") >= 1
+
+
+def test_usage_endpoint(client):
+    assert client.get("/api/usage?days=3").json() == []
+    assert client.get("/api/usage", headers={"Authorization": ""}).status_code == 401
+
+
+def test_forecast_endpoint(client):
+    r = client.post("/api/forecast", json={"org": "decision-board", "goal": "Hire?", "demo": True}).json()
+    assert r["verdict"] == "fits_now" and r["estimate"]["basis"].startswith("no history")
+    assert r["lines"][0] == "Forecast: fits now"
+    none = client.post("/api/forecast", json={"org": "decision-board", "goal": "Hire?"}).json()
+    assert none["verdict"] == "cannot_run"
+    assert client.post("/api/forecast", json={"org": "nope", "goal": "x"}).status_code == 404

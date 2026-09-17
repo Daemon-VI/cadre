@@ -132,6 +132,26 @@ products: Yes"; Cloudflare: "All limits reset daily at 00:00 UTC", no training; 
 `qwen/qwen3.8-27b` on the free plan at 30 RPM / 1K RPD / 8K TPM / 200K TPD; DeepSeek's own API is
 paid and OpenRouter lists no DeepSeek `:free` model).
 
+### M7 — usage ledger and forecast — COMPLETE offline, 2026-09-17
+- **Ledger** — `cadre usage [--days N]`, `GET /api/usage`, and a dashboard *Usage* page (table
+  with one single-hue meter per row and the percentage printed beside it; text via
+  `textContent`). Rolling hourly counters fold into their date; the next reset is shown in IST
+  on the provider's own clock (test: Gemini "18 Sep 12:30 IST"). OK
+- **Forecast** — `cadre forecast <org> "<goal>"`, `POST /api/forecast`, and a preamble printed by
+  `cadre run`. With history: median and p90 (nearest rank) of finished, non-demo runs, printed as
+  `measured, n = k` (test: calls 10/12/14/16/40 → median 14, p90 40). Without: the workflow tree
+  is walked with each agent's real system prompt and tool schemas, printed as `no history,
+  estimated from template size`. Offline estimates today (p90 calls / tokens): decision-board
+  18.5 / 12.2k, research-desk 22.5 / 25.7k, software-team 23.8 / 31.6k, startup-company 35.5 /
+  44.6k. For comparison, the one measured demo decision-board run used 15 calls / 7.9k tokens —
+  but demo replies are tiny, so **the estimates are unverified until M5**. Verdicts tested:
+  fits now, fits today after ~5 min, needs ~3 days, cannot run (call larger than every TPM; no
+  model; private with nothing eligible). OK
+- **Reserve** — `reserve_pct` (default 10) shrinks RPD/TPD as the router sees them (tested: 25 →
+  1000 RPD becomes 750). **Active time** is accumulated per run in `runs.active_seconds`.
+- Tests: **125 passed, 1 skipped, 12.3 s**; ruff clean; dashboard `app.js` passes `node --check`
+  (the new page is not yet seen in a browser).
+
 ### M6 — provider catalogue, day clocks, data policy — COMPLETE offline, 2026-09-17
 - **Catalogue** — Google AI Studio is now ten separate chat-model buckets (from its pricing page,
   updated 2026-09-16); Groq has three (two families); every preset model carries `source`
@@ -167,8 +187,9 @@ second model family on the one free key (reviews can be independent).
    run it yourself with a leading `!`:
    `! cd /c/Users/Rishi/cadre && uv run cadre provider add groq` (it finds the copied key; no
    prompt), then the four template runs listed under M5 in `ROADMAP.md`. Record the numbers here.
-2. Meanwhile the offline milestones continue: M6 done → **M7** (usage ledger, forecast) → M8 →
-   M9 → M10, each committed as `Cadre M<n>: …`.
+2. Meanwhile the offline milestones continue: M6, M7 done → **M8** (edit tools, repo map) → M9 →
+   M10, each committed as `Cadre M<n>: …`. After M5, re-check the M7 template estimates
+   against the measured runs.
 3. Look at the dashboard in a browser (Chrome extension was not connected on 2026-09-16).
 
 ## Environment

@@ -55,6 +55,7 @@ class RunManager:
         self.warnings: list[str] = []
         self.tasks: dict[str, asyncio.Task[Any]] = {}
         self._shutting_down = False
+        self._started: dict[str, float] = {}
 
     # ------------------------------------------------------------------ routers
     def router(self, demo: bool = False) -> Router:
@@ -109,6 +110,7 @@ class RunManager:
                              auto_approve=bool(opts.get("auto_approve")),
                              privacy=opts.get("privacy"))
         resumed = bool(store.step_paths(run_id))
+        self._started[run_id] = time.monotonic()
         store.update_run(run_id, status="running", error=None, finished=None)
         store.heartbeat(run_id)
         try:
@@ -158,6 +160,9 @@ class RunManager:
     def _finish(self, run_id: str, status: str, *, error: str | None = None, result: str | None = None,
                 unapproved: list[str] | None = None) -> dict[str, Any]:
         store = self.store
+        started = self._started.pop(run_id, None)
+        if started is not None:
+            store.add_active_seconds(run_id, time.monotonic() - started)
         store.cancel_pending_approvals(run_id)
         totals = store.usage_totals(run_id)
         summary = {**totals, "files": len(store.files(run_id)), "unapproved": unapproved or [],

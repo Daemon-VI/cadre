@@ -27,8 +27,8 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **P1–P3** | v1.0 requirements (SRS §4.8, FR-8…13), design (ADR-016…022), this plan | — | done 2026-09-17 |
 | **M5** | Live verification on real free keys | G1 | **blocked** — see below |
 | **M6** | Provider catalogue, daily clocks, data policy | G3, G5, G8 · FR-10, FR-12 | done 2026-09-17 (offline; live refresh pending M5) |
-| **M7** | Usage ledger and forecast | G6 · FR-11 | next |
-| **M8** | Code-editing tools and repo map | G7 · FR-13 | planned |
+| **M7** | Usage ledger and forecast | G6 · FR-11 | done 2026-09-17 (offline; estimates to be checked against M5) |
+| **M8** | Code-editing tools and repo map | G7 · FR-13 | next |
 | **M9** | Project mode | G2 · FR-8 | planned |
 | **M10** | Multi-day runs | G4 · FR-9 | planned |
 | **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | planned |

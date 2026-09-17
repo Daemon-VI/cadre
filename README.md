@@ -80,6 +80,19 @@ agent questions are asked in the terminal; add `--yes` to auto-approve gates, or
 Every run gets a workspace at `~/.cadre/runs/<run-id>/workspace/`, with every file version kept
 under `versions/`.
 
+## Will it fit? Usage and forecasts
+
+```bash
+uv run cadre forecast software-team "a CSV to Markdown table converter"
+uv run cadre usage --days 7
+```
+
+The forecast answers *fits now*, *fits today after ~N min of waits*, *needs ~N days* or *cannot
+run*, and always says its basis: `measured, n = …` once an org has finished runs, or `no history,
+estimated from template size` before that. `cadre run` prints it before starting. The usage
+ledger shows requests, tokens and the share of each daily cap per day, provider and model, with
+the next reset in IST.
+
 ## Dashboard
 
 ```bash

@@ -33,6 +33,7 @@ from .config import (
     refresh_provider,
 )
 from .engine import RunOptions
+from .forecast import estimate, forecast, usage_ledger
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
 from .providers import ProviderError
@@ -357,6 +358,48 @@ def quota() -> None:
     con.print(t)
 
 
+@app.command()
+def usage(days: int = typer.Option(7, "--days", "-d", help="how many days back")) -> None:
+    """Requests and tokens per day × provider × model, with the share of each daily cap."""
+    h = home()
+    rows = usage_ledger(Store(h.db_path), h.load_config(), days)
+    if not rows:
+        con.print(f"No usage recorded in the last {days} day(s).")
+        return
+    t = Table(title=f"Usage, last {days} day(s) — share is of the full daily cap")
+    for col in ("day", "provider", "model", "requests", "rpd", "tokens", "tpd", "share", "next reset"):
+        t.add_column(col)
+    for r in rows:
+        share = "-" if r["share"] is None else f"{r['share'] * 100:.0f}%"
+        t.add_row(r["day"], r["provider"], r["model"], f"{r['requests']:,}", str(r["rpd"] or "-"),
+                  f"{r['tokens']:,}", str(r["tpd"] or "-"), share, r["next_reset"] or "")
+    con.print(t)
+
+
+def _forecast_lines(manager: RunManager, org_text: str, goal: str, private: bool, demo: bool) -> list[str]:
+    org = load_org_text(org_text)
+    est = estimate(manager.store, org, goal)
+    router = manager.router(demo)
+    return forecast(est, router, private or org.privacy == "private").lines()
+
+
+@app.command("forecast")
+def forecast_cmd(org: str, goal: str,
+                 private: bool = typer.Option(False, "--private"),
+                 demo: bool = typer.Option(False, "--demo"),
+                 project: str | None = typer.Option(None, "--project",
+                                                    help="accepted for symmetry with `run`")) -> None:
+    """Will this job fit in the quota left today? Says what the estimate is based on."""
+    h = home()
+    manager = RunManager(h)
+    try:
+        _, text = find_org_text(org, h.orgs_dir)
+        for line in _forecast_lines(manager, text, goal, private, demo):
+            con.print(line, markup=False)
+    except (OrgError, FileNotFoundError) as e:
+        fail(str(e))
+
+
 # ------------------------------------------------------------------ orgs
 @org_app.command("list")
 def org_list() -> None:
@@ -550,6 +593,13 @@ def run(
     except (OrgError, FileNotFoundError, ValueError) as e:
         fail(str(e))
     con.print(f"Run [bold]{run_id}[/] · {org}{' · demo mode' if demo else ''}")
+    if not quiet:
+        try:
+            for line in _forecast_lines(manager, manager.store.get_run(run_id)["org_yaml"], goal,
+                                        private, demo):
+                con.print(f"[dim]{line}[/]", markup=True, highlight=False)
+        except Exception as e:  # a forecast must never stop a run from starting
+            con.print(f"[dim]Forecast unavailable: {e}[/]")
     result = _execute(manager, run_id, quiet, wait_elsewhere)
     if show_result and result.get("result"):
         con.print()

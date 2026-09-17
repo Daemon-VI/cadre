@@ -90,7 +90,7 @@ function route() {
   const [, view, arg] = (location.hash || "#/runs").split("/");
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === (view === "run" ? "runs" : view)));
   if (!token()) return showLogin();
-  const views = { runs: viewRuns, run: () => viewRun(arg), new: () => viewNew(arg), orgs: viewOrgs, providers: viewProviders, approvals: viewApprovals };
+  const views = { runs: viewRuns, run: () => viewRun(arg), new: () => viewNew(arg), orgs: viewOrgs, providers: viewProviders, usage: viewUsage, approvals: viewApprovals };
   (views[view] || viewRuns)();
   $main().focus({ preventScroll: true });
 }
@@ -522,6 +522,70 @@ async function viewProviders() {
       quotaBody)));
   loadQuota().catch((e) => toast(e.message));
   const t = setInterval(() => loadQuota().catch(() => {}), 3000);
+  stopView = () => clearInterval(t);
+}
+
+// ---------------------------------------------------------------- usage ledger
+// A table, not a chart: the reader looks up one model on one day. Each row carries one
+// single-hue meter for its share of the daily cap, with the number printed beside it.
+function meter(share) {
+  if (share === null || share === undefined) return h("span", { class: "small muted", text: "no daily cap" });
+  const pct = Math.round(share * 100);
+  const fill = h("span");
+  fill.style.width = `${Math.min(100, pct)}%`;
+  return h("div", { class: "meter-row", title: `${pct}% of the daily cap used` },
+    h("div", { class: "bar" }, fill),
+    h("span", { class: "small", text: `${pct}%` }),
+    pct >= 90 ? h("span", { class: "pill warn", text: "near cap" }) : null);
+}
+
+function viewUsage() {
+  const days = h("select", { id: "days" }, ...[1, 7, 14, 30].map((d) => h("option", { value: d, text: `${d} day${d > 1 ? "s" : ""}` })));
+  days.value = "7";
+  const body = h("tbody");
+  const empty = h("p", { class: "muted hidden", text: "No usage recorded in this period." });
+  const org = h("select", { id: "forecast-org" });
+  const goal = h("input", { type: "text", id: "forecast-goal", placeholder: "Goal to forecast" });
+  const out = h("pre", { class: "hidden" });
+  const load = async () => {
+    const rows = await api(`/api/usage?days=${days.value}`);
+    empty.classList.toggle("hidden", rows.length > 0);
+    body.replaceChildren(...rows.map((r) => h("tr", {},
+      h("td", { class: "small", text: r.day }),
+      h("td", { text: r.provider }),
+      h("td", { class: "mono", text: r.model }),
+      h("td", { class: "num", text: fmt(r.requests) }),
+      h("td", { class: "num", text: r.rpd ? fmt(r.rpd) : "–" }),
+      h("td", { class: "num", text: fmt(r.tokens) }),
+      h("td", {}, meter(r.share)),
+      h("td", { class: "small", text: r.next_reset || "" }))));
+  };
+  days.addEventListener("change", () => load().catch((e) => toast(e.message)));
+  api("/api/orgs").then((orgs) => org.replaceChildren(...orgs.filter((o) => o.valid)
+    .map((o) => h("option", { value: o.name, text: o.name })))).catch(() => {});
+  const run = h("button", { onclick: async () => {
+    try {
+      const f = await api("/api/forecast", { method: "POST", body: { org: org.value, goal: goal.value || "(goal)" } });
+      out.textContent = f.lines.join("\n");
+      out.classList.remove("hidden");
+    } catch (err) { toast(err.message); }
+  } }, "Forecast");
+  mount(
+    h("h1", { text: "Usage" }),
+    h("p", { class: "sub", text: "What each free model has used, against its daily cap. Resets are shown in IST, on each provider's own clock." }),
+    h("div", { class: "panel" },
+      h("div", { class: "row spread" }, h("h3", { text: "Ledger" }), h("label", { class: "row" }, "Period ", days)),
+      h("div", { class: "table-wrap" }, h("table", {},
+        h("thead", {}, h("tr", {}, ...["Day", "Provider", "Model", "Requests", "RPD", "Tokens", "Share of daily cap", "Next reset"]
+          .map((x, i) => h("th", { class: i >= 3 && i <= 5 ? "num" : "", text: x })))),
+        body)), empty),
+    h("div", { class: "panel stack" },
+      h("h3", { text: "Will it fit today?" }),
+      h("div", { class: "row" }, org, goal, run),
+      h("p", { class: "hint", text: "The forecast says whether it is measured from earlier runs or estimated from the org file." }),
+      out));
+  load().catch((e) => toast(e.message));
+  const t = setInterval(() => load().catch(() => {}), 10000);
   stopView = () => clearInterval(t);
 }
 

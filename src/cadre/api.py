@@ -33,6 +33,7 @@ from .config import (
     refresh_provider,
 )
 from .engine import RunOptions
+from .forecast import estimate, forecast, usage_ledger
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
 from .providers import ProviderError
@@ -72,6 +73,14 @@ class RunIn(BaseModel):
     auto_approve: bool = False
     demo: bool = False
     privacy: str | None = None
+
+
+class ForecastIn(BaseModel):
+    org: str | None = None
+    yaml: str | None = None
+    goal: str
+    privacy: str | None = None
+    demo: bool = False
 
 
 class DecisionIn(BaseModel):
@@ -283,6 +292,24 @@ def create_app(manager: RunManager, *, token: str | None = None,
                         usable=m.provider in router.providers and m.provider not in router.disabled)
             rows.append(snap)
         return rows
+
+    @app.get("/api/usage", dependencies=secured)
+    async def usage(days: int = 7) -> list[dict[str, Any]]:
+        return usage_ledger(store, home.load_config(), min(max(days, 1), 90))
+
+    @app.post("/api/forecast", dependencies=secured)
+    async def forecast_endpoint(body: ForecastIn) -> dict[str, Any]:
+        try:
+            text = body.yaml if body.yaml is not None else find_org_text(body.org or "", home.orgs_dir)[1]
+            org = load_org_text(text)
+        except OrgError as e:
+            raise HTTPException(422, {"errors": e.errors}) from None
+        except FileNotFoundError as e:
+            raise HTTPException(404, str(e)) from None
+        est = estimate(store, org, body.goal)
+        private = (body.privacy or org.privacy) == "private"
+        result = forecast(est, manager.router(body.demo), private)
+        return {**result.as_dict(), "lines": result.lines()}
 
     # ------------------------------------------------------------------ orgs
     def org_summary(name: str, source: str, text: str) -> dict[str, Any]:

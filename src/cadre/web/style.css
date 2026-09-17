@@ -169,6 +169,8 @@ pre {
 .bar { height: 6px; background: var(--code); border-radius: 3px; overflow: hidden; min-width: 80px; }
 .bar > span { display: block; height: 100%; background: var(--accent); }
 .bar.hot > span { background: var(--warn); }
+.meter-row { display: flex; align-items: center; gap: 8px; min-width: 160px; }
+.meter-row .bar { flex: 1; }
 .agents { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .agent { background: var(--code); border-radius: 8px; padding: 3px 8px; font-size: 13px; }
 .agent b { font-family: var(--mono); font-weight: 600; }
