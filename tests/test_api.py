@@ -95,7 +95,7 @@ def test_keys_go_in_and_never_come_out(client):
     assert key not in listing.text and listing.json()[0]["id"] == "groq"
     assert key not in (client.home.config_path.read_text(encoding="utf-8"))
     quota = client.get("/api/quota").json()
-    assert {q["model"] for q in quota} == {"openai/gpt-oss-120b", "openai/gpt-oss-20b"}
+    assert {q["model"] for q in quota} == {"openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"}
     assert client.delete("/api/providers/groq").json()["key_deleted"] is True
     assert "groq" not in client.secrets.data
 

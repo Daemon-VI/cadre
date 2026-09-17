@@ -1,6 +1,6 @@
 # Cadre — Software Requirements Specification
 
-_v1.0 · 2026-09-16 · SDLC phase 1 (requirements). Design lives in `ARCHITECTURE.md`, verification
+_v1.1 · 2026-09-17 (v1.0 of 2026-09-16 plus §4.8, the v1.0 programme) · SDLC phase 1 (requirements). Design lives in `ARCHITECTURE.md`, verification
 in `TEST_PLAN.md`, sequencing in `ROADMAP.md`, status in `PROJECT_STATE.md`._
 
 ## 1. The idea, refined
@@ -127,6 +127,72 @@ IDs are referenced from `TEST_PLAN.md`; each requirement has at least one test.
 - **FR-7.3** Web dashboard: providers and quota, orgs, new run, run timeline, files, approvals.
 - **FR-7.4** An offline demo mode that exercises every pattern with no key.
 
+### 4.8 v1.0 programme (added 2026-09-17)
+
+Rithik restated the idea on 2026-09-17: *"combine all the free API keys available — a Google
+account, OpenRouter, DeepSeek and the like — and orchestrate an agentic AI that does tasks, or
+builds or completes a project, while managing the usage of each model and API."* The product
+statement becomes: **a team of AI agents that builds a new project or finishes an existing one on
+free keys only, spreads the work across every provider added, stays inside each one's limits,
+waits for the reset when a day's quota runs out, and shows what every call cost and which model
+made it.** Each requirement below lists acceptance criteria (AC) a test can check.
+
+### FR-8 Project mode
+A run can target an existing git repository and deliver its work as a branch for the owner to
+review; the owner's tree and branches are never modified.
+- **AC-8.1** `--project PATH` that is not a git repository is refused before any model call.
+- **AC-8.2** A dirty working tree is refused unless `--allow-dirty`; with it, the base is HEAD and
+  the run says uncommitted changes are not carried over.
+- **AC-8.3** The workspace is a `git worktree` on a new branch `cadre/<run-id>` from the base.
+- **AC-8.4** After each finished step that changed files, a commit `cadre(<step>): <summary>` is
+  made on that branch with the repo's configured identity and no trailers.
+- **AC-8.5** Checks come from the org file and from `.cadre/checks.yaml` read from the **base
+  commit** at run creation; agents cannot write under `.cadre/` in project mode.
+- **AC-8.6** The result carries `git diff --stat <base>...cadre/<id>` and the commands to review
+  or discard the branch. Cadre never merges, pushes, force-pushes or deletes a branch it did not
+  create.
+- **AC-8.7** A resumed project run continues on the same branch and worktree.
+
+### FR-9 Multi-day runs
+- **AC-9.1** When every eligible model is blocked by a *daily* limit beyond `max_wait`, the run
+  becomes `parked` with `resume_at` = earliest reset + jitter, and a `run.parked` event names each
+  model and its reset time. Minute-window waits still wait; auth failures still fail.
+- **AC-9.2** A parked run that is due is resumed by `cadre resume --due` or by `cadre serve`;
+  finished steps are neither repeated nor re-billed.
+- **AC-9.3** Budgets are cumulative across parks and resumes; `max_days` and
+  `max_tokens_per_day` stop a run by name.
+
+### FR-10 Provider catalogue
+- **AC-10.1** Every free chat model a key can reach is its own quota bucket with its own
+  RPM/TPM/RPD/TPD, each number carrying a source (`docs`, `reported`, `guess`) and the date checked.
+- **AC-10.2** Each provider declares `day_reset` (`UTC`, an IANA zone, or `rolling`); daily
+  counters and "frees in" follow that clock; existing UTC counters survive the change.
+- **AC-10.3** `cadre provider refresh` lists models added and removed at the provider compared
+  with `config.yaml` and never overwrites a limit the owner set.
+
+### FR-11 Usage ledger and forecast
+- **AC-11.1** `cadre usage --days N` and a dashboard page show requests, tokens and share of the
+  daily cap per day × provider × model, with the next reset shown in IST.
+- **AC-11.2** `cadre forecast <org> "<goal>"` answers *fits now*, *fits today after ~N min of
+  waits*, *needs ~N days* or *cannot run* (with the reason), and `cadre run` prints it first.
+- **AC-11.3** `reserve_pct` (default 10) keeps that share of every daily cap unused.
+
+### FR-12 Data-policy routing
+- **AC-12.1** Each preset records `trains_on_free_data` = `yes` / `no` / `unknown` with a source URL.
+- **AC-12.2** A run with `privacy: private` never calls a model whose provider is `yes` or
+  `unknown`; each exclusion is an event; if nothing is left the run fails before its first call
+  and names the excluded providers.
+
+### FR-13 Code-editing tools
+- **AC-13.1** `edit_file(path, old, new)` replaces exactly one exact match; zero or several
+  matches return an error with the count; edits are versioned like writes.
+- **AC-13.2** `read_file` accepts `start_line` / `end_line`; `search(pattern, glob)` returns a
+  capped list of `path:line: text` and cannot leave the workspace.
+- **AC-13.3** Agents with file tools receive a repo map (paths, line counts, top-level Python
+  `def`/`class` names) under a hard token cap.
+- **AC-13.4** Each tool is kept only if its measured saving exceeds its per-call schema cost
+  (numbers recorded in ADR-021/022).
+
 ## 5. Non-functional requirements
 
 | ID | Requirement | Target |
@@ -140,6 +206,8 @@ IDs are referenced from `TEST_PLAN.md`; each requirement has at least one test.
 | **NFR-7 Portability** | Windows first, Linux/macOS compatible; Python 3.12+, `uv` | CI matrix (not yet run — no remote) |
 | **NFR-8 Honesty** | Model catalogues and free limits change; presets carry the date they were checked and are overridable | Preset table dated 2026-09-16 |
 | **NFR-9 Testability** | All behaviour testable with no network | Scripted provider; HTTP mocked with `httpx.MockTransport` |
+| **NFR-10 Owner's tree untouched** | A project run leaves the source repo's HEAD, current branch and `git status --porcelain` identical | Test compares all three before and after a run on a throwaway repo |
+| **NFR-11 Honest forecasts** | Every forecast states its basis | Output contains "measured, n = …" or "no history, estimated from template size" |
 
 ## 6. Constraints and assumptions
 

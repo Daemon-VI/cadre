@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-16 (v0.1.0)_
+_Last updated: 2026-09-17 (v0.1.0 + v1.0 programme in progress)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -97,17 +97,56 @@ not borrowed without asking)._
 - Gemini, Mistral, Z.ai limits are conservative guesses or third-party reports (`presets.py`
   marks each); the header learning corrects them only where a provider sends headers.
 - Checks are not sandboxed (ADR-006). Use `--allow-exec` only for goals you trust.
-- Single user. The token is one shared secret; no roles, no per-team budgets yet (M7).
+- Single user. The token is one shared secret; no roles, no per-team budgets yet (M13).
 - Resume gives the run a fresh budget window (documented choice, not an accident).
 - Starlette warns that its TestClient's `httpx` backend is deprecated; harmless for now.
 
+## v1.0 programme (started 2026-09-17)
+
+`docs/MASTER_PROMPT.md` turns Rithik's restated idea — *build or finish a project on free keys
+only, across every provider, managing each model's usage* — into milestones M5–M11.
+
+### Phase 0 baseline (2026-09-17)
+`uv sync` clean; `uv run pytest -q` → **96 passed, 1 skipped in 9.2 s**; `ruff check` clean;
+tree clean at `d8975a2` apart from the new `docs/MASTER_PROMPT.md`. No provider configured.
+
+### Gaps G1–G8, checked against the code on 2026-09-17 — all confirmed open
+| Gap | Confirmed by |
+|---|---|
+| G1 never run on a real model | no provider in `~/.cadre/config.yaml`; no live run in the store |
+| G2 cannot work on an existing project | `runs.py` builds every workspace as `runs_dir/<id>` via `RunContext` → `Workspace(run_dir)` |
+| G3 one Gemini model, guessed limits | `presets.py`: `gemini` lists only `gemini-2.5-flash`, `source="guess"` |
+| G4 daily limits end runs | `router.py` raises `NoModelAvailable` when every wait exceeds `max_wait`; `runs.py` marks it `failed` |
+| G5 every day is UTC | `quota.py` `_utc_day` / `_until_midnight` |
+| G6 no history, no forecast | `cadre quota` prints only today's counters; no per-day ledger or forecast command |
+| G7 whole-file rewrites only | `tools.py`: `list_files`, `read_file`, `write_file` |
+| G8 data policy only in comments | `presets.py` `note` strings; nothing in `router.py` reads them |
+
+### Phases 1–3 — done 2026-09-17
+SRS v1.1 §4.8 (FR-8…13 with 22 acceptance criteria, NFR-10/11), OBJECTIVES O11–O16,
+ARCHITECTURE ADR-016…022 with the v1.0 state machine and migration plan, ROADMAP renumbered
+(old M6–M10 → M12–M16), TEST_PLAN v1.0 traceability with every test named before it exists.
+Free-tier facts behind them were read from each provider's own pages on 2026-09-17 (Google:
+RPD resets "at midnight Pacific time", limits "per project", free tier "Used to improve our
+products: Yes"; Cloudflare: "All limits reset daily at 00:00 UTC", no training; Groq: no training,
+`qwen/qwen3.8-27b` on the free plan at 30 RPM / 1K RPD / 8K TPM / 200K TPD; DeepSeek's own API is
+paid and OpenRouter lists no DeepSeek `:free` model).
+
+### M5 — blocked on a permission (2026-09-17)
+Rithik authorised using Tessera's Groq key and copied it into Cadre's Credential Manager entry
+himself (his command printed `copied`). The session's auto-mode safety classifier then refused,
+as credential access, `cadre provider add groq`, writing the provider entry, and adding an allow
+rule — so no live call has been made. The Groq preset now includes `qwen/qwen3.8-27b`, giving a
+second model family on the one free key (reviews can be independent).
+
 ## Where to pick up
-1. **M5 — live verification.** Rithik adds a free key (`uv run cadre provider add groq`, or the
-   dashboard's *Models & keys* form), then run each template once and record here: calls, tokens,
-   repairs, 429s/waits, whether reviews were independent. With only Groq, reviews will report
-   `independent: false` — add Gemini too.
-2. Look at the dashboard in a browser and fix what renders badly.
-3. Then `ROADMAP.md` M6+.
+1. **Unblock M5** (Rithik): in Claude Code run `/permissions` and allow `Bash(uv run cadre:*)`, or
+   run it yourself with a leading `!`:
+   `! cd /c/Users/Rishi/cadre && uv run cadre provider add groq` (it finds the copied key; no
+   prompt), then the four template runs listed under M5 in `ROADMAP.md`. Record the numbers here.
+2. Meanwhile the offline milestones continue in order: **M6** (catalogue, clocks, privacy) →
+   M7 → M8 → M9 → M10, each committed as `Cadre M<n>: …`.
+3. Look at the dashboard in a browser (Chrome extension was not connected on 2026-09-16).
 
 ## Environment
 `cd C:\Users\Rishi\cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`

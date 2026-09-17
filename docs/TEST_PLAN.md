@@ -61,6 +61,31 @@ the `..` tests exercise.
 | FR-7.4 demo mode | `test_runs::test_every_template_completes_in_demo_mode` |
 | NFR-3 API lock | `test_api::test_every_api_call_needs_the_token`, `…foreign_host_header_is_refused` |
 
+## v1.0 traceability (tests named before they exist, 2026-09-17)
+
+| Requirement | Tests (file · test) | Milestone |
+|---|---|---|
+| FR-10 AC-10.1 per-model buckets, sourced | `test_catalogue::test_every_free_preset_model_has_a_source_and_date`, `…gemini_free_models_are_separate_buckets` | M6 |
+| FR-10 AC-10.2 day clocks | `test_clocks::test_pacific_day_key_and_reset`, `…utc_is_unchanged_for_v01_rows`, `…rolling_window_frees_hour_by_hour`, `…utc_counts_carry_over_when_the_clock_changes` | M6 |
+| FR-10 AC-10.3 refresh | `test_catalogue::test_refresh_reports_added_and_removed_and_keeps_overrides` | M6 |
+| FR-12 privacy | `test_privacy::test_private_run_never_calls_a_training_provider`, `…excluded_models_are_recorded`, `…private_run_with_nothing_left_fails_before_any_call` | M6 |
+| FR-11 AC-11.1 ledger | `test_forecast::test_usage_ledger_by_day_provider_model`, `test_api::test_usage_endpoint` | M7 |
+| FR-11 AC-11.2 forecast | `test_forecast::test_no_history_is_labelled_estimated`, `…measured_history_uses_median_and_p90`, `…verdicts_fit_now_wait_days_cannot` | M7 |
+| FR-11 AC-11.3 reserve | `test_forecast::test_reserve_pct_shrinks_daily_caps` | M7 |
+| FR-13 AC-13.1 edit | `test_edit_tools::test_edit_replaces_exactly_one_match`, `…zero_or_many_matches_report_the_count`, `…edits_are_versioned` | M8 |
+| FR-13 AC-13.2 ranges, search | `test_edit_tools::test_read_line_range`, `…search_is_capped_and_confined` | M8 |
+| FR-13 AC-13.3 repo map | `test_edit_tools::test_repo_map_lists_defs_and_respects_the_cap` | M8 |
+| FR-13 AC-13.4 measured saving | `test_edit_tools::test_edit_saves_more_than_its_schema_costs` | M8 |
+| FR-8 AC-8.1–8.2 refusals | `test_project::test_non_repo_is_refused`, `…dirty_tree_is_refused_unless_allowed` | M9 |
+| FR-8 AC-8.3–8.4, 8.6 branch, commits, result | `test_project::test_run_commits_on_its_own_branch` | M9 |
+| FR-8 AC-8.5 repo checks from base, `.cadre/` protected | `test_project::test_repo_checks_come_from_the_base_commit`, `…agents_cannot_write_cadre_dir` | M9 |
+| FR-8 AC-8.7 resume on same branch | `test_project::test_resumed_project_run_keeps_its_branch` | M9 |
+| NFR-10 owner's tree untouched | `test_project::test_source_repo_is_untouched` | M9 |
+| FR-9 AC-9.1–9.2 park and resume | `test_multiday::test_daily_limit_parks_then_resumes_without_rebilling`, `…minute_limits_still_wait` | M10 |
+| FR-9 AC-9.3 cumulative budgets | `test_multiday::test_budgets_accumulate_across_resumes`, `…max_days_stops_the_run` | M10 |
+| NFR-11 honest forecasts | `test_forecast::test_no_history_is_labelled_estimated` | M7 |
+| Migration of a v0.1 database | `test_migration::test_v01_database_opens_and_keeps_rows` | M6 |
+
 ## Defects found by the suite (2026-09-16)
 
 1. `RunContext.emit(kind, …)` collided with approval events that carry a `kind` field → the

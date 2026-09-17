@@ -61,6 +61,8 @@ PRESETS: dict[str, Preset] = {p.id: p for p in [
         models=(
             ModelPreset("openai/gpt-oss-120b", "strong", "gpt-oss", **_GROQ_LIMITS),
             ModelPreset("openai/gpt-oss-20b", "fast", "gpt-oss", **_GROQ_LIMITS),
+            # a second family on the same free key, so reviews can be independent (2026-09-17)
+            ModelPreset("qwen/qwen3.8-27b", "fast", "qwen", **_GROQ_LIMITS),
         ),
     ),
     Preset(
