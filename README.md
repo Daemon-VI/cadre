@@ -190,6 +190,14 @@ accounts or projects at one provider to multiply a free limit breaks their terms
 do not train on prompts — today Groq, Cloudflare and local models. The run records which models it
 excluded, and fails before its first call if none are left.
 
+## Agent tools
+
+`list_files`, `read_file` (optionally a line range), `search` (regex, capped), `write_file`,
+`edit_file` (replace one exact, unique match — far cheaper than rewriting a file), `post_note`,
+`run_check` (a check *named* in the org file) and `ask_human`. An agent only gets the tools its
+entry lists. Agents with file tools also see a capped repo map: paths, line counts and top-level
+Python classes and functions.
+
 ## Safety
 
 - **Checks run code the agents wrote, as you, on your machine. This is not a sandbox.** The

@@ -17,7 +17,7 @@ Every test runs with `CADRE_NO_KEYRING=1` and a temporary `CADRE_HOME`, so the s
 the real credential store or `~/.cadre`.
 
 ```bash
-uv run pytest -q          # 125 passed, 1 skipped, ~12 s on the i3-1215U (2026-09-17, after M7)
+uv run pytest -q          # 135 passed, 1 skipped, ~16 s on the i3-1215U (2026-09-17, after M8)
 uv run ruff check src tests
 ```
 
@@ -72,10 +72,10 @@ the `..` tests exercise.
 | FR-11 AC-11.1 ledger | `test_forecast::test_usage_ledger_by_day_provider_model`, `test_api::test_usage_endpoint` | M7 ✅ |
 | FR-11 AC-11.2 forecast | `test_forecast::test_no_history_is_labelled_estimated`, `…measured_history_uses_median_and_p90`, `…verdicts_fit_now_wait_days_cannot`, `…used_quota_counts_against_today`, `…percentile_is_nearest_rank`, `test_api::test_forecast_endpoint` | M7 ✅ (estimates unverified until M5) |
 | FR-11 AC-11.3 reserve | `test_forecast::test_reserve_pct_shrinks_daily_caps` | M7 ✅ |
-| FR-13 AC-13.1 edit | `test_edit_tools::test_edit_replaces_exactly_one_match`, `…zero_or_many_matches_report_the_count`, `…edits_are_versioned` | M8 |
-| FR-13 AC-13.2 ranges, search | `test_edit_tools::test_read_line_range`, `…search_is_capped_and_confined` | M8 |
-| FR-13 AC-13.3 repo map | `test_edit_tools::test_repo_map_lists_defs_and_respects_the_cap` | M8 |
-| FR-13 AC-13.4 measured saving | `test_edit_tools::test_edit_saves_more_than_its_schema_costs` | M8 |
+| FR-13 AC-13.1 edit | `test_edit_tools::test_edit_replaces_exactly_one_match`, `…zero_or_many_matches_report_the_count`, `…edits_are_versioned`, `…crlf_files_accept_plain_newline_edits` | M8 ✅ |
+| FR-13 AC-13.2 ranges, search | `test_edit_tools::test_read_line_range`, `…search_is_capped_and_confined` | M8 ✅ |
+| FR-13 AC-13.3 repo map | `test_edit_tools::test_repo_map_lists_defs_and_respects_the_cap`, `…repo_map_of_cadre_itself_stays_under_the_default_cap`, `…agents_with_file_tools_get_the_map_others_get_the_listing` | M8 ✅ |
+| FR-13 AC-13.4 measured saving | `test_edit_tools::test_edit_saves_more_than_its_schema_costs` | M8 ✅ (estimator tokens; live pending M5) |
 | FR-8 AC-8.1–8.2 refusals | `test_project::test_non_repo_is_refused`, `…dirty_tree_is_refused_unless_allowed` | M9 |
 | FR-8 AC-8.3–8.4, 8.6 branch, commits, result | `test_project::test_run_commits_on_its_own_branch` | M9 |
 | FR-8 AC-8.5 repo checks from base, `.cadre/` protected | `test_project::test_repo_checks_come_from_the_base_commit`, `…agents_cannot_write_cadre_dir` | M9 |

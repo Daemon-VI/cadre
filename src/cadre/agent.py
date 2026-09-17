@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from .org import AgentSpec
 from .providers import extract_json
+from .repomap import repo_map
 from .tools import execute, specs_for
 from .types import Message
 
@@ -67,11 +68,18 @@ def system_prompt(ctx: RunContext, agent: AgentSpec, json_reply: str | None) -> 
     return "\n\n".join(parts)
 
 
-def user_prompt(ctx: RunContext, task: str, context: str) -> str:
+FILE_TOOLS = frozenset({"list_files", "read_file", "search", "write_file", "edit_file"})
+
+
+def user_prompt(ctx: RunContext, task: str, context: str, tools: list[str] | None = None) -> str:
     parts = [f"GOAL: {ctx.goal}", f"YOUR TASK:\n{task.strip()}"]
     if context:
         parts.append(context.strip())
-    parts.append(f"WORKSPACE FILES:\n{ctx.workspace.listing()}")
+    if tools and FILE_TOOLS.intersection(tools):
+        # ADR-022: orientation is injected once per call instead of costing a list_files turn
+        parts.append("REPO MAP (path, lines, top-level definitions):\n" + repo_map(ctx.workspace))
+    else:
+        parts.append(f"WORKSPACE FILES:\n{ctx.workspace.listing()}")
     notes = ctx.notes[-NOTES_IN_PROMPT:]
     if notes:
         parts.append("TEAM BOARD (latest):\n" + "\n".join(f"- {a}: {t}" for a, t in notes))
@@ -84,7 +92,7 @@ async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
     allowed = list(agent.tools if tools is None else tools)
     specs = specs_for(allowed, ctx)
     messages = [Message(role="system", content=system_prompt(ctx, agent, json_reply)),
-                Message(role="user", content=user_prompt(ctx, task, context))]
+                Message(role="user", content=user_prompt(ctx, task, context, allowed))]
     result = AgentResult(agent=agent.id, text="")
     ctx.emit("agent.start", agent=agent.id, step=step, task=task[:400])
     nudged = False
@@ -102,7 +110,7 @@ async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
             for tc in calls:
                 ok, text = await execute(ctx, agent.id, allowed, tc, step)
                 result.tool_calls += 1
-                if ok and tc.name == "write_file":
+                if ok and tc.name in ("write_file", "edit_file"):
                     path = str(tc.arguments.get("path", ""))
                     if path and path not in result.files:
                         result.files.append(path)

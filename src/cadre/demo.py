@@ -100,10 +100,10 @@ def brain(label: str):
             return json.dumps({"answer": "[demo] no JSON shape recognised"})
 
         if "write_file" in names:
-            task = first_user.split("YOUR TASK:", 1)[-1].split("WORKSPACE FILES:", 1)[0]
+            task = re.split(r"WORKSPACE FILES:|REPO MAP", first_user.split("YOUR TASK:", 1)[-1], maxsplit=1)[0]
             wanted = list(dict.fromkeys(_FILE.findall(task))) or [f"{me}_output.md"]
-            listing = first_user.split("WORKSPACE FILES:", 1)[-1]
-            existing = set(re.findall(r"^(\S+) \(\d+ B\)$", listing, re.M))
+            listing = re.split(r"WORKSPACE FILES:|REPO MAP", first_user, maxsplit=1)[-1]
+            existing = set(re.findall(r"^(\S+) \((?:\d+ B|\d+ lines)\)", listing, re.M))
             todo = [f for f in wanted if f not in written and f not in existing]
             if todo:
                 path = todo[0]

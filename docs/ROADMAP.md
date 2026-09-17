@@ -28,8 +28,8 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M5** | Live verification on real free keys | G1 | **blocked** — see below |
 | **M6** | Provider catalogue, daily clocks, data policy | G3, G5, G8 · FR-10, FR-12 | done 2026-09-17 (offline; live refresh pending M5) |
 | **M7** | Usage ledger and forecast | G6 · FR-11 | done 2026-09-17 (offline; estimates to be checked against M5) |
-| **M8** | Code-editing tools and repo map | G7 · FR-13 | next |
-| **M9** | Project mode | G2 · FR-8 | planned |
+| **M8** | Code-editing tools and repo map | G7 · FR-13 | done 2026-09-17 (offline) |
+| **M9** | Project mode | G2 · FR-8 | next |
 | **M10** | Multi-day runs | G4 · FR-9 | planned |
 | **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | planned |
 | M12 | Container runner for checks | — | after v1.0 |

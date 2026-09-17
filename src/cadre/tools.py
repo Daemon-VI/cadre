@@ -1,9 +1,9 @@
 """The tools an agent may call, and the named checks behind `run_check` (FR-5, ADR-006, ADR-014).
 
-Six tools, each in a permission class:
+Eight tools, each in a permission class:
 
-    read   list_files, read_file
-    write  write_file, post_note
+    read   list_files, read_file, search
+    write  write_file, edit_file, post_note
     exec   run_check          — runs a check *named in the org file*; never a model-written command
     human  ask_human          — pauses the agent until the operator answers
 
@@ -58,8 +58,31 @@ async def _list_files(ctx: RunContext, agent: str, step: str, args: dict[str, An
     return ctx.workspace.listing(limit=200)
 
 
+def _line(args: dict[str, Any], key: str) -> int | None:
+    v = args.get(key)
+    if v in (None, ""):
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        raise ValueError(f"{key} must be a whole number") from None
+
+
 async def _read_file(ctx: RunContext, agent: str, step: str, args: dict[str, Any]) -> str:
-    return ctx.workspace.read(_str(args, "path"))
+    return ctx.workspace.read(_str(args, "path"), start_line=_line(args, "start_line"),
+                              end_line=_line(args, "end_line"))
+
+
+async def _edit_file(ctx: RunContext, agent: str, step: str, args: dict[str, Any]) -> str:
+    info = ctx.workspace.edit(_str(args, "path"), _str(args, "old"), _str(args, "new", ""), agent)
+    ctx.note_file(agent, step, str(info["path"]))
+    return (f"edited {info['path']} (version {info['version']}): replaced {info['removed_lines']} "
+            f"line(s) with {info['added_lines']}")
+
+
+async def _search(ctx: RunContext, agent: str, step: str, args: dict[str, Any]) -> str:
+    glob = args.get("glob")
+    return ctx.workspace.search(_str(args, "pattern"), str(glob) if glob else None)
 
 
 async def _write_file(ctx: RunContext, agent: str, step: str, args: dict[str, Any]) -> str:
@@ -90,9 +113,23 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool("list_files", "read", _spec(
         "list_files", "List every file in the shared workspace with its size.", {}, []), _list_files),
     Tool("read_file", "read", _spec(
-        "read_file", "Read a text file from the shared workspace.",
-        {"path": {"type": "string", "description": "path relative to the workspace"}},
+        "read_file", "Read a text file from the shared workspace, optionally only some lines.",
+        {"path": {"type": "string", "description": "path relative to the workspace"},
+         "start_line": {"type": "integer", "description": "first line (1-based), optional"},
+         "end_line": {"type": "integer", "description": "last line, optional"}},
         ["path"]), _read_file),
+    Tool("search", "read", _spec(
+        "search", "Find lines matching a regex in workspace files; returns path:line: text.",
+        {"pattern": {"type": "string"},
+         "glob": {"type": "string", "description": "optional file filter, e.g. *.py"}},
+        ["pattern"]), _search),
+    Tool("edit_file", "write", _spec(
+        "edit_file", "Replace one exact, unique piece of text in a file. Prefer this to "
+        "rewriting a whole file.",
+        {"path": {"type": "string"},
+         "old": {"type": "string", "description": "exact text now in the file; must occur once"},
+         "new": {"type": "string", "description": "replacement text"}},
+        ["path", "old", "new"]), _edit_file),
     Tool("write_file", "write", _spec(
         "write_file", "Create or overwrite a text file in the shared workspace. Write the "
         "complete file content every time.",

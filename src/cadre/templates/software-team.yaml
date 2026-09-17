@@ -23,17 +23,18 @@ agents:
     tier: strong
     max_turns: 12
     max_output_tokens: 3000
-    tools: [list_files, read_file, write_file, run_check, post_note]
+    tools: [list_files, read_file, search, write_file, edit_file, run_check, post_note]
     instructions: |
       Implement SPEC.md in plain Python 3 using only the standard library. Write unittest tests
       that cover every acceptance criterion. Run the checks before you finish and fix whatever
-      fails. Summarise what you built and what the checks said.
+      fails. To change an existing file, use edit_file on the exact lines instead of rewriting it.
+      Summarise what you built and what the checks said.
 
   - id: reviewer
     role: Senior code reviewer
     tier: strong
     diverse_from: engineer
-    tools: [list_files, read_file]
+    tools: [list_files, read_file, search]
     instructions: |
       Compare the code with SPEC.md: correctness, edge cases, error handling, and whether the
       tests really check the acceptance criteria. Name the file, the problem and the fix.

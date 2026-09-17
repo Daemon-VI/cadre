@@ -132,6 +132,26 @@ products: Yes"; Cloudflare: "All limits reset daily at 00:00 UTC", no training; 
 `qwen/qwen3.8-27b` on the free plan at 30 RPM / 1K RPD / 8K TPM / 200K TPD; DeepSeek's own API is
 paid and OpenRouter lists no DeepSeek `:free` model).
 
+### M8 — code-editing tools and repo map — COMPLETE offline, 2026-09-17
+- **`edit_file`** (exactly one exact match, else an error that gives the count; CRLF files accept
+  plain-newline edits; versioned like writes), **`read_file` line ranges**, **`search`** (regex or
+  literal, ≤ 40 hits, workspace only). Measured with Cadre's estimator on a 400-line module: a
+  one-line change costs 7,056 tokens by rewrite vs 134 by edit (saving 6,922); the schemas cost
+  218 tokens per call → kept (ADR-021). A whole 400-line file needs 4 reads, because observations
+  are cut at 4 KB — the range read is necessary, not a luxury. OK
+- **Repo map** (ADR-022) — injected for agents holding file tools: path, line count, public
+  classes then public functions (`ast`), capped at 1,200 tokens. Cadre's own 21 modules: 683
+  tokens vs 101 for the plain listing. OK
+- **Found and fixed while measuring:** every new file write walked the whole tree to enforce the
+  300-file cap (quadratic; a 290-file test took 12.6 s) and the cap counted files a project
+  already had, which would have blocked project mode on any real repository. The cap now counts
+  files written during the run, and listing prunes `.git`, `node_modules`, `.venv`, `__pycache__`
+  instead of walking into them (same test: 0.9 s).
+- software-team: engineer gains `search` and `edit_file` and is told to edit rather than
+  rewrite; reviewer gains `search`.
+- Tests: **135 passed, 1 skipped, 15.8 s**; ruff clean. Real-model use of `edit_file` (do free
+  models copy `old` exactly?) is **unverified until M5**.
+
 ### M7 — usage ledger and forecast — COMPLETE offline, 2026-09-17
 - **Ledger** — `cadre usage [--days N]`, `GET /api/usage`, and a dashboard *Usage* page (table
   with one single-hue meter per row and the percentage printed beside it; text via
@@ -187,8 +207,8 @@ second model family on the one free key (reviews can be independent).
    run it yourself with a leading `!`:
    `! cd /c/Users/Rishi/cadre && uv run cadre provider add groq` (it finds the copied key; no
    prompt), then the four template runs listed under M5 in `ROADMAP.md`. Record the numbers here.
-2. Meanwhile the offline milestones continue: M6, M7 done → **M8** (edit tools, repo map) → M9 →
-   M10, each committed as `Cadre M<n>: …`. After M5, re-check the M7 template estimates
+2. Meanwhile the offline milestones continue: M6–M8 done → **M9** (project mode) → M10, each
+   committed as `Cadre M<n>: …`. After M5, re-check the M7 template estimates
    against the measured runs.
 3. Look at the dashboard in a browser (Chrome extension was not connected on 2026-09-16).
 

@@ -224,9 +224,20 @@ prompt sent once cannot be recalled. **Proof.** `tests/test_privacy.py`.
 **Decision.** `edit_file(path, old, new)` (exactly one match, else an error with the count;
 versioned like writes), `read_file(path, start_line, end_line)`, and `search(pattern, glob)`
 (≤ 40 matches, workspace only). Each is kept only if the measured saving beats its per-call schema
-cost; the measurement (Cadre's own 4-characters-a-token estimator on a 400-line fixture) lives in
-`tests/test_edit_tools.py` and its numbers are recorded under M8 in `PROJECT_STATE.md`. Tools stay
-opt-in per agent. **Rejected.** *Unified diffs from the model* — free models produce malformed
+cost. **Measured 2026-09-17** with Cadre's own 4-characters-a-token estimator
+(`tests/test_edit_tools.py::measure_edit_saving`), changing one docstring line of a 400-line
+module (3,414 tokens):
+
+| Route | Tokens in | Tokens out | Total |
+|---|---|---|---|
+| read the whole file (4 reads — observations are cut at 4 KB) and `write_file` it back | 3,414 | 3,642 | 7,056 |
+| `search` → `read_file` 5 lines → `edit_file` | 69 | 65 | 134 |
+
+Saving: **6,922 tokens per one-line edit**. Cost: the three schemas add **218 tokens to every
+call** (`edit_file` 99, `search` 74, `read_file`'s range parameters 45). Break-even is one targeted
+edit every ~31 calls; the test enforces a 10× margin. **Kept.** The software-team engineer and
+reviewer now hold them; tools stay opt-in per agent. Provider tokenizers differ from 4 characters
+a token, so the absolute numbers are estimates; the ratio is what the decision rests on. **Rejected.** *Unified diffs from the model* — free models produce malformed
 hunks often enough that a failed patch costs more than it saves; an exact-match replace either
 applies or says why not.
 
@@ -235,7 +246,13 @@ applies or says why not.
 each text file's path and line count and, for Python files, the top-level `def`/`class` names from
 `ast`, cut at a token cap (default 1,200) with "… N more files". Orientation is needed on nearly
 every task, so a tool would cost a round trip almost every time; injected context costs its
-tokens once per call and saves the `list_files` turn. Its measured size is recorded with M8.
+tokens once per call and saves the `list_files` turn. Public classes come before public functions
+and private names are left out, because a first version cut off `class Engine` in Cadre's own
+`engine.py`. **Measured 2026-09-17:** Cadre's own 21 modules map to 683 tokens against 101 for the
+plain listing, so the map adds ~580 tokens per call; the software-team engineer's fixed prompt is
+836 tokens, so one saved exploratory turn pays for about 1.5 calls of map. That is roughly even on
+a tiny greenfield task and clearly positive on an existing repository (project mode, M9), which is
+why it stays; M11's live runs will say whether a per-agent switch is needed.
 
 ## Data model (SQLite)
 

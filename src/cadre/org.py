@@ -27,7 +27,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 SLUG = r"^[a-z][a-z0-9_-]{0,31}$"
-KNOWN_TOOLS = ("list_files", "read_file", "write_file", "run_check", "post_note", "ask_human")
+KNOWN_TOOLS = ("list_files", "read_file", "search", "write_file", "edit_file", "run_check",
+               "post_note", "ask_human")
 
 
 class _Strict(BaseModel):
