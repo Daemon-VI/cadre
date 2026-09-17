@@ -36,9 +36,14 @@ class ProviderError(RuntimeError):
 
 
 class RateLimited(ProviderError):
-    def __init__(self, message: str, retry_after: float | None = None):
+    def __init__(self, message: str, retry_after: float | None = None, daily: bool = False,
+                 limit: int | None = None):
         super().__init__(message)
         self.retry_after = retry_after
+        #: the provider says a *daily* quota is spent (Gemini: quotaId "...PerDay...")
+        self.daily = daily
+        #: the quota value the provider reported, when it did
+        self.limit = limit
 
 
 class AuthFailed(ProviderError):
@@ -55,6 +60,10 @@ class RequestTooLarge(ProviderError):
 
 class ToolsUnsupported(ProviderError):
     """The endpoint rejected function calling; the JSON tool protocol will work instead."""
+
+
+class ModelGone(ProviderError):
+    """404: this model does not exist for this key (retired, or closed to new users)."""
 
 
 class MalformedOutput(ProviderError):
@@ -150,8 +159,12 @@ def _err_text(r: httpx.Response) -> str:
     if isinstance(err, list) and err:
         err = err[0]
     if isinstance(err, dict):
-        err = err.get("message") or err.get("error") or json.dumps(err)[:300]
-    return str(err)[:300]
+        err = err.get("message") or err.get("error") or json.dumps(err)[:600]
+    return str(err)[:600]
+
+
+_QUOTA_ID = re.compile(r'"quotaId"\s*:\s*"([^"]+)"')
+_QUOTA_VALUE = re.compile(r'"quotaValue"\s*:\s*"?(\d+)')
 
 
 def classify(r: httpx.Response, label: str) -> ProviderError:
@@ -160,7 +173,14 @@ def classify(r: httpx.Response, label: str) -> ProviderError:
     if r.status_code == 429:
         if "request too large" in low or "reduce your message size" in low:
             return RequestTooLarge(msg)
-        return RateLimited(msg, retry_after(r))
+        # Google reports which quota was hit (live, 2026-09-17: "You exceeded your current quota")
+        ids = _QUOTA_ID.findall(r.text or "")
+        daily = any("perday" in q.lower() for q in ids) or "requests per day" in low
+        value = _QUOTA_VALUE.search(r.text or "")
+        if ids:
+            msg += f" [quota {', '.join(dict.fromkeys(ids))}" + (f" = {value.group(1)}]" if value else "]")
+        return RateLimited(msg, retry_after(r), daily=daily,
+                           limit=int(value.group(1)) if value and daily else None)
     if r.status_code in (401, 403):
         return AuthFailed(msg)
     if r.status_code == 413 or "context length" in low or "context_length" in low \
@@ -171,6 +191,8 @@ def classify(r: httpx.Response, label: str) -> ProviderError:
     if r.status_code in (400, 404, 422) and "tool" in low and (
             "support" in low or "not enabled" in low or "unavailable" in low):
         return ToolsUnsupported(msg)
+    if r.status_code == 404:
+        return ModelGone(msg)
     if r.status_code >= 500 or r.status_code == 408:
         return Unavailable(msg)
     return BadRequest(msg)
@@ -300,7 +322,9 @@ class OpenAICompatProvider(LLMProvider):
     def __init__(self, id: str, base_url: str, api_key: str | None, *, label: str = "",
                  local: bool = False, timeout: float = 120.0,
                  transport: httpx.AsyncBaseTransport | None = None,
-                 extra_headers: dict[str, str] | None = None):
+                 extra_headers: dict[str, str] | None = None,
+                 extra_body: dict[str, Any] | None = None,
+                 unsigned_tool_call_extra: dict[str, Any] | None = None):
         super().__init__(id, label, local)
         self.base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -308,6 +332,11 @@ class OpenAICompatProvider(LLMProvider):
         self._timeout = timeout
         self._transport = transport
         self._extra = extra_headers or {}
+        #: provider-specific request fields, e.g. Gemini's reasoning_effort (M5, 2026-09-17)
+        self._extra_body = dict(extra_body or {})
+        #: what to attach to a replayed tool call this provider did not issue (Gemini's documented
+        #: last-resort placeholder signature); None: attach nothing
+        self._unsigned_extra = unsigned_tool_call_extra
         self._client: httpx.AsyncClient | None = None
 
     @property
@@ -336,9 +365,10 @@ class OpenAICompatProvider(LLMProvider):
         msgs = messages if native or not tools else to_json_protocol(messages, tools)
         body: dict[str, Any] = {
             "model": model,
-            "messages": [_wire(m) for m in msgs],
+            "messages": [_wire(m, self.id, self._unsigned_extra) for m in msgs],
             "temperature": temperature,
             "max_tokens": max_tokens,
+            **self._extra_body,
         }
         if native:
             body["tools"] = [{"type": "function", "function": t.model_dump()} for t in tools]
@@ -365,8 +395,10 @@ class OpenAICompatProvider(LLMProvider):
         if native:
             for tc in msg.get("tool_calls") or []:
                 fn = tc.get("function") or {}
+                extra = tc.get("extra_content") if isinstance(tc.get("extra_content"), dict) else {}
                 calls.append(ToolCall(id=tc.get("id") or f"call_{uuid.uuid4().hex[:8]}",
-                                      name=fn.get("name", ""), arguments=_as_dict(fn.get("arguments"))))
+                                      name=fn.get("name", ""), arguments=_as_dict(fn.get("arguments")),
+                                      extra=extra, origin=self.id if extra else ""))
             content = strip_thinking(content)
         elif tools:
             content, calls = parse_json_reply(content)
@@ -424,14 +456,22 @@ def _as_dict(v: Any) -> dict[str, Any]:
     return {}
 
 
-def _wire(m: Message) -> dict[str, Any]:
+def _wire(m: Message, provider_id: str = "",
+          unsigned_extra: dict[str, Any] | None = None) -> dict[str, Any]:
     if m.role == "tool":
         return {"role": "tool", "tool_call_id": m.tool_call_id or "", "content": m.content}
     d: dict[str, Any] = {"role": m.role, "content": m.content}
     if m.tool_calls:
-        d["tool_calls"] = [{"id": t.id, "type": "function",
-                            "function": {"name": t.name, "arguments": json.dumps(t.arguments)}}
-                           for t in m.tool_calls]
+        calls = []
+        for t in m.tool_calls:
+            c: dict[str, Any] = {"id": t.id, "type": "function",
+                                 "function": {"name": t.name, "arguments": json.dumps(t.arguments)}}
+            if t.extra and t.origin == provider_id:
+                c["extra_content"] = t.extra          # replay the issuer's signature unchanged
+            elif unsigned_extra:
+                c["extra_content"] = unsigned_extra   # a call another model made
+            calls.append(c)
+        d["tool_calls"] = calls
         if not m.content:
             d["content"] = None
     return d

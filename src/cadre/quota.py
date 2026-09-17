@@ -232,6 +232,17 @@ class ModelQuota:
             b[1] = max(0, b[1] - res.est)
         self.inflight -= 1
 
+    def exhaust_day(self, limit: int | None = None) -> None:
+        """The provider says today's quota is spent: believe it until this model's day resets,
+        and remember the limit it reported (it may be lower than the preset's)."""
+        if limit:
+            self.limits.rpd = limit if not self.limits.rpd else min(self.limits.rpd, limit)
+        bucket = self._buckets.setdefault(self.day, [0, 0])
+        bucket[0] = max(bucket[0], self.limits.rpd or bucket[0] + 1)
+        if not self.limits.rpd:
+            self.limits.rpd = bucket[0]
+        self._changed(self.day)
+
     def cool(self, seconds: float) -> None:
         self.cooldown_until = max(self.cooldown_until, self._clock() + max(0.0, seconds))
 
@@ -263,6 +274,12 @@ class ModelQuota:
             "day_tokens": self.day_tokens,
             "cooldown_s": round(max(0.0, self.cooldown_until - now), 1),
             "headroom": round(self.headroom(), 3),
+            # what the provider's own rate-limit headers said last (ADR-003), when it sends them
+            "header_tokens_remaining": self._hdr_tokens[0] if self._hdr_tokens else None,
+            "header_tokens_reset_s": round(max(0.0, self._hdr_tokens[1] - now), 1) if self._hdr_tokens else None,
+            "header_requests_remaining": self._hdr_requests[0] if self._hdr_requests else None,
+            "header_requests_reset_s": (round(max(0.0, self._hdr_requests[1] - now), 1)
+                                        if self._hdr_requests else None),
         }
 
 

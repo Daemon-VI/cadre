@@ -14,18 +14,22 @@ agents:
       You plan the work and integrate the results. Assign each task to the specialist whose role
       fits it, keep the plan small, and make every task produce a named markdown file.
   - id: researcher
+    max_output_tokens: 2500
     role: Market researcher
     tools: [list_files, read_file, write_file, post_note]
     instructions: Research customers, competitors and market size. Separate facts from estimates.
   - id: engineer
+    max_output_tokens: 2500
     role: Engineer
     tools: [list_files, read_file, write_file, post_note]
     instructions: Design the technical approach, the architecture and a realistic build plan.
   - id: designer
+    max_output_tokens: 2500
     role: Product designer
     tools: [list_files, read_file, write_file, post_note]
     instructions: Design user journeys, the key screens (described in words) and product copy.
   - id: marketer
+    max_output_tokens: 2500
     role: Growth marketer
     tools: [list_files, read_file, write_file, post_note]
     instructions: Plan positioning, pricing, channels and the first 90 days of go-to-market.

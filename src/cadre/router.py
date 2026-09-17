@@ -27,6 +27,7 @@ from .providers import (
     BadRequest,
     LLMProvider,
     MalformedOutput,
+    ModelGone,
     ProviderError,
     RateLimited,
     RequestTooLarge,
@@ -38,6 +39,9 @@ from .quota import DAILY, NEVER, Block, Limits, QuotaBook
 from .types import ChatResponse, Message, ToolSpec
 
 Emit = Callable[[str, dict[str, Any]], None]
+
+#: seconds an agent will wait to stay on the model its tool loop started with
+STICKY_WAIT = 5.0
 
 
 @dataclass
@@ -70,6 +74,8 @@ class CallRequest:
     temperature: float = 0.3
     label: str = ""
     private: bool = False  # only providers that do not train on prompts (ADR-020)
+    #: keep an agent's tool loop on the model it started with when that model is free soon
+    prefer: str | None = None
 
 
 @dataclass
@@ -113,16 +119,24 @@ def _human(seconds: float) -> str:
 class Router:
     def __init__(self, providers: dict[str, LLMProvider], models: list[ModelEntry],
                  quotas: QuotaBook | None = None, *, max_wait: float = 90.0,
+                 max_total_wait: float = 900.0,
                  max_failures: int = 6, max_concurrency: int = 3,
                  sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep):
         self.providers = providers
         self.models = models
         self.quotas = quotas or QuotaBook()
         self.max_wait = max_wait
+        #: total seconds one call may spend waiting on minute windows. 3 × max_wait (v0.1) was too
+        #: short live: four parallel QA reviews queued on one independent model (2026-09-17)
+        self.max_total_wait = max_total_wait
         self.max_failures = max_failures
         self._sleep = sleep
         self._sem = asyncio.Semaphore(max_concurrency)
         self.disabled: dict[str, str] = {}  # provider id -> reason, for this session
+        #: consecutive "unavailable" answers per model; a busy model rests longer each time
+        self._unavailable: dict[str, int] = {}
+        #: models that answered 404 (retired or closed to this key), for this session
+        self.gone: dict[str, str] = {}
 
     def quota(self, m: ModelEntry):
         return self.quotas.get(m.key, m.limits, DayClock(m.day_reset))
@@ -130,7 +144,7 @@ class Router:
     def usable(self, private: bool = False) -> list[ModelEntry]:
         return [m for m in self.models
                 if m.enabled and m.provider in self.providers and m.provider not in self.disabled
-                and (not private or m.trains == "no")]
+                and m.key not in self.gone and (not private or m.trains == "no")]
 
     def excluded_for_privacy(self) -> list[ModelEntry]:
         return [m for m in self.usable() if m.trains != "no"]
@@ -180,7 +194,11 @@ class Router:
                     ranked.append((b.wait, m.priority, -self.quota(m).headroom(), m.key, m, b.why))
                 if ranked:
                     ranked.sort(key=lambda r: r[:4])
-                    choice = (ranked[0][0], ranked[0][4], independent, ranked[0][5])
+                    best = ranked[0]
+                    sticky = next((r for r in ranked if r[3] == req.prefer and r[0] <= STICKY_WAIT), None)
+                    if sticky is not None:
+                        best = sticky
+                    choice = (best[0], best[4], independent, best[5])
                     break
             if choice is None:
                 finite = {k: b for k, b in blocked.items() if b.kind != NEVER}
@@ -196,7 +214,7 @@ class Router:
                 emit("route.wait", {"model": m.key, "seconds": round(wait, 1), "reason": why})
                 await self._sleep(wait + 0.05)
                 waited += wait
-                if waited > self.max_wait * 3:
+                if waited > self.max_total_wait:
                     raise NoModelAvailable(f"waited {int(waited)}s for capacity and gave up")
                 continue
 
@@ -208,20 +226,27 @@ class Router:
                                            max_tokens=req.max_tokens, temperature=req.temperature)
             except RateLimited as e:
                 q.release(res)
-                q.cool(e.retry_after if e.retry_after is not None else 20.0)
-                note = f"{m.key}: rate limited"
+                if e.daily:
+                    q.exhaust_day(e.limit)  # waits for this model's own reset, may park the run
+                else:
+                    q.cool(e.retry_after if e.retry_after is not None else 20.0)
+                note = f"{m.key}: rate limited ({e})"
             except AuthFailed as e:
                 q.release(res)
                 self.disabled[m.provider] = str(e)
                 note = f"{m.provider}: key rejected — provider disabled for this session"
-            except RequestTooLarge:
+            except RequestTooLarge as e:
                 q.release(res)
                 exclude.add(m.key)
-                note = f"{m.key}: request too large for this model"
+                note = f"{m.key}: request too large for this model ({e})"
             except ToolsUnsupported:
                 q.release(res)
                 m.protocol = "json"
                 note = f"{m.key}: no function calling — switched to the JSON tool protocol"
+            except ModelGone as e:
+                q.release(res)
+                self.gone[m.key] = str(e)
+                note = f"{m.key}: not available to this key — skipped for this session ({e})"
             except MalformedOutput:
                 q.settle(res, est)
                 if m.key in malformed:
@@ -230,7 +255,11 @@ class Router:
                 note = f"{m.key}: produced a malformed tool call"
             except Unavailable as e:
                 q.release(res)
-                q.cool(min(60.0, 5.0 * (failures + 1)))
+                # Gemini answered 503 "high demand" seven times in one live run (2026-09-17):
+                # rest a busy model 30 s, then 60, 120 … up to 10 min, until it answers again
+                streak = self._unavailable.get(m.key, 0) + 1
+                self._unavailable[m.key] = streak
+                q.cool(min(600.0, 30.0 * 2 ** (streak - 1)))
                 note = f"{m.key}: unavailable ({e})"
             except BadRequest as e:
                 q.release(res)
@@ -242,6 +271,7 @@ class Router:
             else:
                 q.settle(res, resp.usage.total)
                 q.observe(resp.rate)
+                self._unavailable.pop(m.key, None)
                 return CallResult(resp, m, independent, waited, fallbacks)
             failures += 1
             fallbacks.append(note)

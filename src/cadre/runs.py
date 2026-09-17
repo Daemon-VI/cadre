@@ -31,6 +31,7 @@ from .engine import (
     StepFailed,
     unapproved_steps,
 )
+from .forecast import estimate, forecast
 from .org import CheckSpec, OrgError, find_org_text, load_org_text
 from .project import (
     ProjectError,
@@ -160,6 +161,13 @@ class RunManager:
             ctx.emit("run.started", org=org.name, goal=run["goal"], resumed=resumed,
                      models=[m.key for m in router.usable(ctx.private)], warnings=self.warnings,
                      workspace=str(ctx.workspace.root), private=ctx.private)
+            if not resumed:
+                try:  # forecast vs actual is an M5/M11 measurement; never block a run on it
+                    fc = forecast(estimate(store, org, run["goal"], run.get("project_path")),
+                                  router, ctx.private)
+                    ctx.emit("run.forecast", **fc.as_dict())
+                except Exception as e:
+                    ctx.emit("run.forecast", error=str(e))
             if ctx.private:
                 excluded = router.excluded_for_privacy()
                 if excluded:

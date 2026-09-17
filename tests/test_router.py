@@ -116,3 +116,75 @@ async def test_no_downgrade_when_the_agent_forbids_it():
     with pytest.raises(NoModelAvailable):
         await r.chat(CallRequest(MSG, tier="strong", allow_downgrade=False))
     assert (await r.chat(CallRequest(MSG, tier="strong"))).entry.name == "small"
+
+
+async def test_busy_model_rests_longer_each_time_and_recovers():
+    from cadre.providers import Unavailable
+
+    now = [0.0]
+    a = ScriptedProvider("a", [Unavailable("503 high demand"), Unavailable("503 high demand"), "ok"])
+    b = ScriptedProvider("b", lambda *_: "b")
+    models = entries(("a", "m", "strong", "x"), ("b", "m", "strong", "y"))
+    r = Router({"a": a, "b": b}, models, QuotaBook(clock=lambda: now[0]))
+    await r.chat(CallRequest(MSG))  # a fails once, b answers
+    assert r.quota(models[0]).wait_time(10)[0] == pytest.approx(30)
+    now[0] += 31
+    await r.chat(CallRequest(MSG))  # a fails again: now it rests 60 s
+    assert r.quota(models[0]).wait_time(10)[0] == pytest.approx(60)
+    now[0] += 61
+    assert (await r.chat(CallRequest(MSG))).entry.provider == "a"
+    assert "a/m" not in r._unavailable
+
+
+async def test_a_model_that_answers_404_is_skipped_for_the_session():
+    from cadre.providers import ModelGone
+
+    a = ScriptedProvider("a", [ModelGone("404 no longer available to new users")])
+    b = ScriptedProvider("b", lambda *_: "b")
+    r = Router({"a": a, "b": b}, entries(("a", "old", "strong", "x"), ("b", "m", "strong", "y")))
+    assert (await r.chat(CallRequest(MSG))).entry.provider == "b"
+    assert (await r.chat(CallRequest(MSG))).entry.provider == "b"
+    assert len(a.calls) == 1 and "a/old" in r.gone
+
+
+async def test_a_tool_loop_stays_on_its_model():
+    a = ScriptedProvider("a", lambda *_: "a")
+    b = ScriptedProvider("b", lambda *_: "b")
+    r = Router({"a": a, "b": b}, entries(("a", "m", "strong", "x"), ("b", "m", "strong", "x")))
+    assert (await r.chat(CallRequest(MSG))).entry.provider == "a"  # priority
+    assert (await r.chat(CallRequest(MSG, prefer="b/m"))).entry.provider == "b"
+
+
+async def test_long_contention_waits_instead_of_failing():
+    # 2026-09-17: four QA reviews shared one independent model; one call kept losing the freed slot
+    now = [0.0]
+    a = ScriptedProvider("a", lambda *_: "ok")
+    models = [ModelEntry("a", "m", tier="strong", family="x", limits=Limits(rpm=1))]
+    r = Router({"a": a}, models, QuotaBook(clock=lambda: now[0]), max_wait=90)
+    q = r.quota(models[0])
+    steals = [5]
+
+    async def sleep(s):
+        now[0] += s
+        if steals[0]:  # another task takes the slot that just freed up
+            steals[0] -= 1
+            q.settle(q.reserve(10), 10)
+
+    r._sleep = sleep
+    await r.chat(CallRequest(MSG))
+    res = await r.chat(CallRequest(MSG))
+    assert res.waited > 300  # six waits of ~60 s: more than v0.1's 270 s cap
+    assert len(a.calls) == 2
+
+
+async def test_a_daily_quota_429_blocks_the_model_until_its_reset():
+    daily = RateLimited("429 quota", retry_after=41, daily=True, limit=6)
+    a = ScriptedProvider("a", [daily])
+    b = ScriptedProvider("b", lambda *_: "b")
+    models = [ModelEntry("a", "m", tier="strong", family="x", priority=1, limits=Limits(rpd=20)),
+              ModelEntry("b", "m", tier="strong", family="y", priority=2, limits=Limits())]
+    r = Router({"a": a, "b": b}, models)
+    assert (await r.chat(CallRequest(MSG))).entry.provider == "b"
+    block = r.quota(models[0]).block(10)
+    assert block.kind == "daily" and block.wait > 60 and models[0].limits.rpd == 6
+    assert (await r.chat(CallRequest(MSG))).entry.provider == "b" and len(a.calls) == 1

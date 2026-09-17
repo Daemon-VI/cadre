@@ -11,6 +11,7 @@ import math
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -35,8 +36,18 @@ from .types import Message
 
 #: pacing below this many minutes still counts as "fits now"
 NOW_MINUTES = 2.0
-#: output tokens a typical turn really produces (reserved output is larger; see ADR-019)
-TYPICAL_OUTPUT = 400
+# Per-call token model, calibrated on the first live runs (M5, 2026-09-17, Groq + Gemini):
+# agents that only write or talk sent about twice their base prompt per call; agents that read
+# other agents' files (editors, checkers, QA) sent 3.8-4.8k; writers produced 450-830 output
+# tokens a call, readers 120-210, council members about 450.
+IN_GROWTH = 2.0
+READ_CONTEXT = 3000       # without a project; with one, its text size (clamped) is used
+READ_CONTEXT_MIN = 500
+OUT_WRITER = 700
+OUT_READER = 200
+OUT_OTHER = 450
+READ_TOOLS = frozenset({"list_files", "read_file", "search"})
+WRITE_TOOLS = frozenset({"write_file", "edit_file"})
 MEASURED_STATUSES = ("succeeded", "unapproved")
 
 
@@ -113,21 +124,49 @@ def _agent_call_tokens(org: OrgSpec, agent: AgentSpec, goal: str, task: str = ""
     return estimate_tokens(msgs, specs_for(names))
 
 
-def from_template(org: OrgSpec, goal: str, largest_call: int) -> Estimate:
+def project_text_tokens(root: str | Path) -> int:
+    """Tokens of text a reader could pull in from a project (tracked text files, ~4 chars/token)."""
+    from .project import git
+
+    try:
+        names = git(["ls-files"], root).stdout.splitlines()
+    except Exception:
+        return READ_CONTEXT
+    total = 0
+    for n in names:
+        p = Path(root) / n
+        try:
+            if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".zip", ".pdf", ".ico", ".exe"}:
+                continue
+            total += p.stat().st_size
+        except OSError:
+            continue
+    return total // 4
+
+
+def from_template(org: OrgSpec, goal: str, largest_call: int,
+                  read_context: int | None = None) -> Estimate:
     """Calls and tokens implied by the workflow tree (no history). Assumptions are stated in ADR-019:
     an agent with tools takes 3 calls (act, act, answer), without tools 1; a strict-JSON answer
     needs a repair turn one time in four; review loops need 2 rounds typically, all rounds at p90."""
     lines: list[str] = []
+    context = READ_CONTEXT if read_context is None else max(READ_CONTEXT_MIN, min(READ_CONTEXT, read_context))
+    if read_context is not None:
+        lines.append(f"project text ~{read_context:,} tokens (readers assumed to carry {context:,})")
 
     def agent_calls(a: AgentSpec, json_answer: bool = False) -> float:
-        return (3.0 if a.tools else 1.0) + (0.25 if json_answer else 0.0)
+        # writers measured 2-8 calls a task (act, save, answer, and sometimes a nudge)
+        return (4.0 if WRITE_TOOLS.intersection(a.tools) else 3.0 if a.tools else 1.0)             + (0.25 if json_answer else 0.0)
 
     def walk(step, depth: int = 0) -> tuple[float, float, float, float]:
         """(calls, calls_p90, tokens, tokens_p90)"""
         def cost(a: AgentSpec, calls: float, calls_p90: float, task: str = ""):
-            per = _agent_call_tokens(org, a, goal, task) + TYPICAL_OUTPUT
-            growth = 1.5 if a.tools else 1.0  # later turns resend earlier tool results
-            return calls, calls_p90, calls * per * growth, calls_p90 * per * growth
+            base = _agent_call_tokens(org, a, goal, task)
+            reads = bool(READ_TOOLS.intersection(a.tools))
+            writes = bool(WRITE_TOOLS.intersection(a.tools))
+            per = (base * IN_GROWTH + (context if reads else 0)
+                   + (OUT_WRITER if writes else OUT_READER if reads else OUT_OTHER))
+            return calls, calls_p90, calls * per, calls_p90 * per
 
         match step:
             case SequenceStep() | ParallelStep():
@@ -145,7 +184,7 @@ def from_template(org: OrgSpec, goal: str, largest_call: int) -> Estimate:
                 for r in step.reviewers:
                     ra = org.agent(r)
                     rc = (2.0 if ra.tools else 1.0) + 0.25
-                    for i, v in enumerate(cost(ra, rc, rc)):
+                    for i, v in enumerate(cost(ra, rc, rc + 2)):
                         one[i] += v
                 typical, worst = min(2, step.max_rounds), step.max_rounds
                 lines.append(f"review loop {step.builder}: {typical}-{worst} rounds")
@@ -165,15 +204,16 @@ def from_template(org: OrgSpec, goal: str, largest_call: int) -> Estimate:
                 return tuple(tot)  # type: ignore[return-value]
             case ManagerStep():
                 mgr = org.agent(step.manager)
-                tasks = min(step.max_tasks, len(step.workers) + 1)
+                # live runs planned 1 task for one worker and 4 for four (2026-09-17)
+                tasks = min(step.max_tasks, max(1, len(step.workers)))
                 tot = list(cost(mgr, 2.25, 2.5))  # plan (+repair) and integration
                 worker_calls = sum(agent_calls(org.agent(w)) for w in step.workers) / len(step.workers)
                 w0 = org.agent(step.workers[0])
-                for i, v in enumerate(cost(w0, worker_calls * tasks, worker_calls * step.max_tasks)):
+                for i, v in enumerate(cost(w0, worker_calls * tasks, (worker_calls + 2) * step.max_tasks)):
                     tot[i] += v
                 if step.reviewer:
                     ra = org.agent(step.reviewer)
-                    for i, v in enumerate(cost(ra, 1.25 * tasks, 1.25 * step.max_tasks * step.review_rounds)):
+                    for i, v in enumerate(cost(ra, 2.25 * tasks, 4.25 * step.max_tasks * step.review_rounds)):
                         tot[i] += v
                 lines.append(f"manager {step.manager}: ~{tasks} tasks (up to {step.max_tasks})")
                 return tuple(tot)  # type: ignore[return-value]
@@ -193,11 +233,12 @@ def largest_call(org: OrgSpec, goal: str) -> int:
     return max(_agent_call_tokens(org, a, goal) + a.max_output_tokens for a in org.agents)
 
 
-def estimate(store: Store, org: OrgSpec, goal: str) -> Estimate:
+def estimate(store: Store, org: OrgSpec, goal: str, project: str | Path | None = None) -> Estimate:
     big = largest_call(org, goal)
     hist = measured(store, org.name)
     if not hist:
-        return from_template(org, goal, big)
+        return from_template(org, goal, big,
+                             project_text_tokens(project) if project else None)
     calls = [r["calls"] for r in hist]
     tokens = [r["prompt_tokens"] + r["completion_tokens"] for r in hist]
     mins = [r["active_seconds"] / 60 for r in hist if r.get("active_seconds")]

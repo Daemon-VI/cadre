@@ -17,6 +17,7 @@ import os
 import re
 import secrets as pysecrets
 from pathlib import Path
+from typing import Any
 
 import httpx
 import yaml
@@ -69,6 +70,14 @@ class ProviderConfig(BaseModel):
     day_reset: str | None = None
     trains_on_free_data: str | None = None
     reserve_pct: int = 10
+    #: extra request fields; None means the preset's (e.g. Gemini's reasoning_effort)
+    request_params: dict[str, Any] | None = None
+
+    def params_for_requests(self) -> dict[str, Any]:
+        if self.request_params is not None:
+            return self.request_params
+        p = self._preset()
+        return dict(p.request_params) if p else {}
 
     def _preset(self):
         return PRESETS.get(self.preset)
@@ -94,6 +103,7 @@ class ProviderConfig(BaseModel):
 
 class Settings(BaseModel):
     max_wait: float = 90.0
+    max_total_wait: float = 900.0
     max_concurrency: int = 3
     port: int = 8765
 
@@ -202,7 +212,9 @@ def make_provider(pc: ProviderConfig, store: SecretStore,
                   transport: httpx.AsyncBaseTransport | None = None) -> OpenAICompatProvider:
     key = store.get(pc.key_ref, pc.env) if pc.key_ref else None
     return OpenAICompatProvider(pc.id, pc.url(), key, label=pc.label or pc.id, local=pc.local,
-                                transport=transport)
+                                transport=transport, extra_body=pc.params_for_requests(),
+                                unsigned_tool_call_extra=(PRESETS[pc.preset].unsigned_tool_call_extra
+                                                          if pc.preset in PRESETS else None))
 
 
 def build_router(cfg: CadreConfig, store: SecretStore | None = None,
@@ -236,6 +248,7 @@ def build_router(cfg: CadreConfig, store: SecretStore | None = None,
     providers.update(extra or {})
     models.extend(extra_models or [])
     router = Router(providers, models, quotas, max_wait=cfg.settings.max_wait,
+                    max_total_wait=cfg.settings.max_total_wait,
                     max_concurrency=cfg.settings.max_concurrency)
     return router, warnings
 

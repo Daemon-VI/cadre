@@ -46,8 +46,9 @@ async def test_gemini_free_models_are_separate_buckets(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-not-a-real-key-000")
     pc = provider_from_preset("gemini")
     names = [m.name for m in pc.models]
-    assert len(names) >= 9 and len(set(names)) == len(names)
-    assert {"gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-2.5-pro"} <= set(names)
+    assert len(names) >= 7 and len(set(names)) == len(names)
+    assert {"gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"} <= set(names)
+    assert not any(n.startswith("gemini-2.5") for n in names)  # 404 for new users, 2026-09-17
     assert pc.clock() == "America/Los_Angeles" and pc.trains() == "yes"
 
     served = []

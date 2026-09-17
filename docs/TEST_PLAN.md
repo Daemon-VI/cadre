@@ -10,14 +10,14 @@ _2026-09-16 · v0.1 · SDLC phase 4 (verification). Requirements: `SRS.md`._
 | Component | provider adapter, router, each workflow pattern | `httpx.MockTransport`; `ScriptedProvider` answering per agent | none |
 | Integration | run lifecycle, resume, cancel across "processes", API + stream | `RunManager` on a temp `CADRE_HOME`; FastAPI `TestClient` | none |
 | System (offline) | all four templates end to end | `--demo` provider; real `unittest`/`compileall` checks executed | none |
-| System (live) | real free models | `cadre run … ` against a Groq/Gemini key | **not yet run (M5)** |
+| System (live) | real free models | `cadre run …` on Groq + Google AI Studio keys | run 2026-09-17 (M5): all five templates; table in PROJECT_STATE |
 | Manual | CLI and HTTP smoke | `cadre run --demo`, `cadre serve` + curl | none |
 
 Every test runs with `CADRE_NO_KEYRING=1` and a temporary `CADRE_HOME`, so the suite never touches
 the real credential store or `~/.cadre`.
 
 ```bash
-uv run pytest -q          # 150 passed, 1 skipped, ~25 s on the i3-1215U (2026-09-17, after M10)
+uv run pytest -q          # 170 passed, 1 skipped, ~24 s on the i3-1215U (2026-09-17, after M5)
 uv run ruff check src tests
 ```
 
@@ -86,6 +86,23 @@ the `..` tests exercise.
 | NFR-11 honest forecasts | `test_forecast::test_no_history_is_labelled_estimated`, `…measured_history_uses_median_and_p90` | M7 ✅ |
 | Migration of a v0.1 database | `test_migration::test_v01_database_opens_and_keeps_rows` | M6 ✅ |
 
+## Live regressions (M5, 2026-09-17)
+
+Each is a test built from what a real model or provider did:
+`test_providers::test_gemini_thought_signatures_are_replayed_only_to_gemini`,
+`…a_retired_model_is_classified_as_gone`, `…gemini_daily_and_minute_quota_errors_are_told_apart`,
+`…provider_request_params_are_sent_with_every_call`;
+`test_router::test_busy_model_rests_longer_each_time_and_recovers`,
+`…a_model_that_answers_404_is_skipped_for_the_session`, `…a_tool_loop_stays_on_its_model`,
+`…long_contention_waits_instead_of_failing` (fails on v0.1's 270 s cap),
+`…a_daily_quota_429_blocks_the_model_until_its_reset`;
+`test_engine::test_truncated_replies_are_recorded`, `…an_answer_that_should_have_been_a_file_is_nudged_then_saved`,
+`…a_nudged_agent_that_writes_the_file_is_not_overridden`, `…repeated_identical_reads_are_not_executed_again`,
+`…a_review_avoids_every_family_the_builder_used`, `…reviewers_see_the_written_files_inline`,
+`…deliverables_are_read_from_the_real_template_tasks`;
+`test_runs::test_forecast_is_recorded_once_per_run`; `test_forecast::test_project_size_sets_the_read_context`;
+`test_cli::test_provider_add_without_a_key_fails_fast_instead_of_hanging`.
+
 ## Changed expectations
 
 - 2026-09-17 (M10, ADR-017): `test_router::test_exhausted_quota_fails_with_a_reason_that_names_the_model`
@@ -105,9 +122,7 @@ the `..` tests exercise.
 
 ## Not covered yet
 
-- Real-model behaviour of any kind (M5): whether free models follow the JSON verdict/vote/plan
-  shapes, how many repair turns they need, real token cost per template, real 429 behaviour.
-- The dashboard in a browser (the Chrome extension was not connected on 2026-09-16).
+- The dashboard in a browser (the Chrome extension was not connected on 2026-09-16 or 2026-09-17).
 - `cadre provider add` against a live endpoint (hidden prompt, keyring write on Windows).
 - Concurrent writers: a CLI run and a server writing the same SQLite file at high rates.
 - CI: `.github/workflows` not added — the repo has no remote.

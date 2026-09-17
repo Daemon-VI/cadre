@@ -6,21 +6,25 @@ budget: {max_calls: 50, max_tokens: 200000, max_minutes: 25, max_parallel: 3}
 
 agents:
   - id: market
+    max_output_tokens: 2500
     role: Market analyst
     tier: fast
     tools: [write_file]
     instructions: Cover demand, players, pricing and trends. Mark estimates as estimates.
   - id: tech
+    max_output_tokens: 2500
     role: Technology analyst
     tier: fast
     tools: [write_file]
     instructions: Cover how it works, its maturity, its constraints and what is likely to change.
   - id: risk
+    max_output_tokens: 2500
     role: Risk analyst
     tier: fast
     tools: [write_file]
     instructions: Cover regulatory, ethical, operational and financial risks, with likelihood.
   - id: editor
+    max_output_tokens: 3000
     role: Editor
     tools: [list_files, read_file, write_file]
     instructions: Merge analyses into one clear brief. Resolve contradictions openly instead of hiding them.

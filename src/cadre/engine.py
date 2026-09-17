@@ -170,7 +170,8 @@ class RunContext:
         self.outputs: dict[str, str] = {}
         self.prev = ""
         self.notes: list[tuple[str, str]] = []
-        self.families: dict[str, str] = {}
+        #: every model family each agent has used in this run (ADR-004)
+        self.families: dict[str, list[str]] = {}
         self._exec_approved = self.options.allow_exec
         self.private = (self.options.privacy or org.privacy) == "private"
         self._last_beat = 0.0
@@ -178,7 +179,9 @@ class RunContext:
             if e["kind"] == "note":
                 self.notes.append((e["agent"] or "?", e["data"].get("text", "")))
             elif e["data"].get("family"):
-                self.families[e["agent"]] = e["data"]["family"]
+                fams = self.families.setdefault(e["agent"], [])
+                if e["data"]["family"] not in fams:
+                    fams.append(e["data"]["family"])
 
     # ------------------------------------------------------------------ events
     def emit(self, event: str, /, agent: str | None = None, step: str | None = None,
@@ -204,30 +207,36 @@ class RunContext:
         return render(text, self.variables())
 
     def avoid_for(self, agent: AgentSpec) -> tuple[str, ...]:
-        return tuple(self.families[d] for d in agent.diverse_from if d in self.families)
+        return tuple(f for d in agent.diverse_from for f in self.families.get(d, []))
 
     # ------------------------------------------------------------------ model calls
     async def call(self, agent: AgentSpec, messages: list[Message], specs: list[ToolSpec],
-                   step: str, avoid: tuple[str, ...] = ()) -> CallResult:
+                   step: str, avoid: tuple[str, ...] = (), prefer: str | None = None) -> CallResult:
         self.checkpoint()
         req = CallRequest(messages=messages, tools=specs, tier=agent.tier,
                           allow_downgrade=agent.allow_downgrade,
                           avoid_families=tuple(dict.fromkeys(f for f in avoid if f)),
                           pin=agent.model, max_tokens=agent.max_output_tokens,
                           temperature=agent.temperature, label=agent.id,
-                          private=self.private)
+                          private=self.private, prefer=prefer)
         res = await self.router.chat(
             req, emit=lambda kind, data: self.emit(kind, agent=agent.id, step=step, **data))
         u = res.response.usage
         self.budget.charge(u)
         self.store.add_usage(self.run_id, agent.id, res.entry.provider, res.entry.name,
                              u.prompt_tokens, u.completion_tokens)
-        self.families[agent.id] = res.entry.family
+        fams = self.families.setdefault(agent.id, [])
+        if res.entry.family not in fams:
+            fams.append(res.entry.family)
         self.emit("agent.call", agent=agent.id, step=step, model=res.entry.key,
                   family=res.entry.family, tokens_in=u.prompt_tokens, tokens_out=u.completion_tokens,
                   tools=[t.name for t in res.response.tool_calls],
                   independent=res.independent if req.avoid_families else None,
-                  waited=round(res.waited, 1), fallbacks=res.fallbacks)
+                  waited=round(res.waited, 1), fallbacks=res.fallbacks,
+                  finish=res.response.finish_reason)
+        if res.response.finish_reason == "length" and not res.response.tool_calls:
+            self.emit("agent.truncated", agent=agent.id, step=step, model=res.entry.key,
+                      tokens_out=u.completion_tokens, max_tokens=agent.max_output_tokens)
         return res
 
     # ------------------------------------------------------------------ humans
@@ -511,6 +520,8 @@ PLAN = {"tasks": [{"id": "t1", "title": "short imperative title", "assignee": "<
                    "depends_on": [], "details": "exactly what to produce, including file names"}]}
 
 READ_ONLY = ("list_files", "read_file")
+INLINE_REVIEW_CHARS = 12_000
+INLINE_FILE_CHARS = 6_000
 
 
 class Engine:
@@ -640,11 +651,11 @@ class Engine:
             checks_out = await self.cached(f"{rp}/checks", lambda: self.run_checks(checks, f"{rp}/checks"))
             results = checks_out.data["results"]
             checks_ok = all(r["passed"] for r in results)
-            bfam = build.data.get("family") or self.ctx.families.get(builder.id, "")
+            bfams = build.data.get("families") or [build.data.get("family", "")]
             verdicts = []
             for rid in reviewer_ids:
                 reviewer = self.org.agent(rid)
-                avoid = (bfam, *self.ctx.avoid_for(reviewer))
+                avoid = (*bfams, *self.ctx.avoid_for(reviewer))
                 v = await self.cached(f"{rp}/review/{rid}", lambda: self.review(
                     reviewer, builder, task, build, results, avoid, f"{rp}/review/{rid}"))
                 verdicts.append(v.data)
@@ -682,7 +693,8 @@ class Engine:
         files = ", ".join(build.data.get("files", [])) or "(none reported)"
         prompt = (f"Review {builder.id}'s work on this task.\n\nTASK:\n{task}\n\n"
                   f"{builder.id.upper()} REPORTS:\n{_brief(build.text, 3000)}\n\n"
-                  f"FILES WRITTEN THIS ROUND: {files}\n\nAUTOMATED CHECKS:\n{check_text}\n\n"
+                  f"FILES WRITTEN THIS ROUND: {files}\n\n{self.inline_files(build)}"
+                  f"AUTOMATED CHECKS:\n{check_text}\n\n"
                   "Read whatever you need, then give your verdict. Approve only if the work fully "
                   "meets the task. Minor issues alone should not block approval. A failing check "
                   "means the work is not done.")
@@ -714,6 +726,28 @@ class Engine:
         verdict.update(reviewer=reviewer.id, model=res.model, independent=res.independent)
         return StepOutput(text=verdict["summary"], data=verdict)
 
+    def inline_files(self, build: StepOutput) -> str:
+        """The files the builder wrote, inline and capped (M5, 2026-09-17).
+
+        Live QA reviewers spent most of their calls re-reading deliverables, and every tool turn
+        resends everything read so far; one call with the content in the prompt costs less and
+        needs no wait on the reviewer's model. Larger files are cut; the read tools remain.
+        """
+        parts, budget = [], INLINE_REVIEW_CHARS
+        for path in build.data.get("files", [])[:4]:
+            try:
+                text = self.ctx.workspace.read(path, max_chars=min(INLINE_FILE_CHARS, budget))
+            except ValueError:
+                continue
+            if budget <= 0:
+                break
+            budget -= len(text)
+            parts.append(f"--- {path} ---\n{text}")
+        if not parts:
+            return ""
+        return ("CONTENT OF THOSE FILES (longer files are cut; use read_file for the rest):\n"
+                + "\n".join(parts) + "\n\n")
+
     @staticmethod
     def feedback(results: list[dict[str, Any]], verdicts: list[dict[str, Any]]) -> str:
         lines = ["FEEDBACK FROM THE LAST ROUND:"]
@@ -743,8 +777,9 @@ class Engine:
             out = await self.cached(f"{path}/propose/{m.id}", lambda: self.propose(
                 m, question, [], avoids[m.id], f"{path}/propose/{m.id}"))
             proposals[m.id] = out.data
-            if out.data.get("family"):
-                used.append(out.data["family"])
+            for fam in out.data.get("families") or [out.data.get("family")]:
+                if fam and fam not in used:
+                    used.append(fam)
         for r in range(1, s.rounds + 1):
             revised: dict[str, dict[str, Any]] = {}
             for m in members:
@@ -843,7 +878,7 @@ class Engine:
                     if isinstance(raw_opts, list) else [],
                     "recommendation": str(obj["recommendation"])[:300],
                     "reasoning": str(obj.get("reasoning", ""))[:1500], "valid": True}
-        data.update(member=m.id, model=res.model, family=res.family)
+        data.update(member=m.id, model=res.model, family=res.family, families=res.families)
         return StepOutput(text=data["recommendation"], data=data)
 
     async def consolidate(self, chair: AgentSpec, question: str,

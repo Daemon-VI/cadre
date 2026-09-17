@@ -11,6 +11,10 @@ class ToolCall(BaseModel):
     id: str = ""
     name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
+    #: provider-specific data that must be sent back unchanged (Gemini 3's thought signature
+    #: arrives as tool_calls[].extra_content), and the provider id that issued it
+    extra: dict[str, Any] = Field(default_factory=dict)
+    origin: str = ""
 
 
 class ToolSpec(BaseModel):

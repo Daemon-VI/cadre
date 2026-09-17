@@ -300,3 +300,102 @@ workflow:
     assert out.text == "final"
     join_prompt = store.events(ctx.run_id, kinds=("agent.start",))
     assert any(e["agent"] == "f" and "polish: L+R" in e["data"]["task"] for e in join_prompt)
+
+
+async def test_truncated_replies_are_recorded(tmp_path, store):
+    org = "name: t\nagents: [{id: a, role: r}]\nworkflow: {agent: a, task: go}\n"
+    cut = ChatResponse(content='{"options": [{"title": "half', finish_reason="length")
+    router, *_ = two_family_router(by_agent({"a": [cut]}))
+    engine, ctx = make_engine(tmp_path, store, org, router)
+    await engine.run()
+    ev = store.events(ctx.run_id, kinds=("agent.truncated",))
+    assert ev and ev[0]["agent"] == "a" and ev[0]["data"]["max_tokens"] == 1500
+    call = store.events(ctx.run_id, kinds=("agent.call",))[0]["data"]
+    assert call["finish"] == "length"
+
+
+# --------------------------------------------------------------------------- seen live (M5)
+
+def test_deliverables_are_read_from_the_real_template_tasks():
+    from cadre.agent import deliverables
+
+    assert deliverables("Analyse the market for: X. Write market.md.") == ["market.md"]
+    assert deliverables("Merge market.md, tech.md and risks.md into BRIEF.md (under 800 words)") == ["BRIEF.md"]
+    assert deliverables("Write SPEC.md for this goal: a CSV tool") == ["SPEC.md"]
+    assert deliverables("Implement SPEC.md: the code in app.py and the tests in test_app.py.") == []
+
+
+ANALYST_ORG = """
+name: desk
+agents: [{id: market, role: analyst, tools: [write_file]}]
+workflow: {agent: market, task: "Analyse the market for: X. Write market.md."}
+"""
+REPORT = "# Market Analysis\n\n" + "A long market analysis paragraph. " * 12
+
+
+async def test_an_answer_that_should_have_been_a_file_is_nudged_then_saved(tmp_path, store):
+    # 2026-09-17: gpt-oss-20b answered with the whole report as text and never called write_file
+    router, *_ = two_family_router(by_agent({"market": [REPORT, REPORT]}))
+    engine, ctx = make_engine(tmp_path, store, ANALYST_ORG, router)
+    out = await engine.run()
+    assert store.events(ctx.run_id, kinds=("agent.nudged",))[0]["data"]["missing"] == ["market.md"]
+    saved = store.events(ctx.run_id, kinds=("agent.deliverable_saved",))
+    assert saved and saved[0]["data"]["path"] == "market.md"
+    assert ctx.workspace.read("market.md").startswith("# Market Analysis")
+    assert out.data["files"] == ["market.md"]
+
+
+async def test_a_nudged_agent_that_writes_the_file_is_not_overridden(tmp_path, store):
+    router, *_ = two_family_router(by_agent({"market": [
+        REPORT, write("market.md", "# written by the agent\n"), "saved it"]}))
+    engine, ctx = make_engine(tmp_path, store, ANALYST_ORG, router)
+    await engine.run()
+    assert ctx.workspace.read("market.md") == "# written by the agent\n"
+    assert not store.events(ctx.run_id, kinds=("agent.deliverable_saved",))
+
+
+async def test_repeated_identical_reads_are_not_executed_again(tmp_path, store):
+    # 2026-09-17: gpt-oss-120b called list_files eight times in a row and ran out of turns
+    org = "name: t\nagents: [{id: ed, role: editor, tools: [list_files]}]\nworkflow: {agent: ed, task: look}\n"
+    ls = ChatResponse(tool_calls=[ToolCall(id="l", name="list_files", arguments={})])
+    router, a, _ = two_family_router(by_agent({"ed": [ls, ls, ls, "done"]}))
+    engine, ctx = make_engine(tmp_path, store, org, router)
+    await engine.run()
+    assert len(store.events(ctx.run_id, kinds=("agent.tool",))) == 1
+    assert len(store.events(ctx.run_id, kinds=("agent.repeat",))) == 2
+    last_tool_msg = [m for m in a.calls[-1]["messages"] if m.role == "tool"][-1]
+    assert "already called list_files" in last_tool_msg.content
+
+
+async def test_a_review_avoids_every_family_the_builder_used(tmp_path, store):
+    # 2026-09-17: the editor worked on gpt-oss and answered on gemini; the checker then avoided
+    # only gemini and reviewed on gpt-oss while the run said "independent"
+    from cadre.providers import ScriptedProvider
+    from cadre.quota import Limits, QuotaBook
+    from cadre.router import ModelEntry, Router
+
+    script = by_agent({"eng": [write("x.md", "x"), "done"], "rev": [APPROVE]})
+    p = ScriptedProvider("p", script)
+    models = [ModelEntry("p", "a", tier="strong", family="alpha", priority=1, limits=Limits(rpm=1)),
+              ModelEntry("p", "b", tier="strong", family="beta", priority=2, limits=Limits()),
+              ModelEntry("p", "c", tier="strong", family="gamma", priority=3, limits=Limits())]
+    router = Router({"p": p}, models, QuotaBook(), max_wait=1)
+    org = REVIEW_ORG.replace("checks: [tests]", "checks: []").replace("max_rounds: 3", "max_rounds: 1")
+    engine, ctx = make_engine(tmp_path, store, org, router)
+    out = await engine.run()
+    used = [c["model"] for c in p.calls]
+    assert used[:2] == ["a", "b"]           # alpha is out of requests/min, so the builder moved on
+    assert used[2] == "c"                   # the reviewer avoided alpha and beta
+    assert out.data["verdicts"][0]["independent"] is True
+
+
+async def test_reviewers_see_the_written_files_inline(tmp_path, store):
+    # 2026-09-17: live QA spent most of its calls re-reading deliverables with read_file
+    org = REVIEW_ORG.replace("checks: [tests]", "checks: []").replace("max_rounds: 3", "max_rounds: 1")
+    script = by_agent({"eng": [write("plan.md", "# Plan\nship it in two weeks\n"), "done"],
+                       "rev": [APPROVE]})
+    router, a, b = two_family_router(script)
+    engine, ctx = make_engine(tmp_path, store, org, router)
+    await engine.run()
+    review_prompt = b.calls[0]["messages"][1].content
+    assert "--- plan.md ---" in review_prompt and "ship it in two weeks" in review_prompt

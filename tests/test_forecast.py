@@ -122,3 +122,23 @@ def test_reserve_pct_shrinks_daily_caps(monkeypatch):
     pc.reserve_pct = 0
     router, _ = build_router(CadreConfig(providers=[pc]), MemorySecrets())
     assert router.models[0].limits.rpd == 1000
+
+
+def test_project_size_sets_the_read_context(tmp_path):
+    # 2026-09-17: project-finisher on a 300-token repo used 16.8k tokens; the generic 3,000-token
+    # read context forecast 71k. The project's own text size now bounds it.
+    import subprocess
+
+    from cadre.forecast import from_template, project_text_tokens
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"x = 1\n" * 200)  # 1,200 bytes (write_text would add CRs)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    assert project_text_tokens(repo) == 300
+    org = load_org_text(find_org_text("project-finisher")[1])
+    small = from_template(org, "g", 0, project_text_tokens(repo))
+    generic = from_template(org, "g", 0)
+    assert small.tokens < generic.tokens
+    assert any("project text ~300 tokens" in line for line in small.per_step)

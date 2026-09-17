@@ -140,6 +140,78 @@ products: Yes"; Cloudflare: "All limits reset daily at 00:00 UTC", no training; 
 `qwen/qwen3.8-27b` on the free plan at 30 RPM / 1K RPD / 8K TPM / 200K TPD; DeepSeek's own API is
 paid and OpenRouter lists no DeepSeek `:free` model).
 
+### M5 — live verification on Groq + Google AI Studio — COMPLETE, 2026-09-17
+Keys: Groq (gpt-oss-120b, gpt-oss-20b, qwen3.8-27b) and Gemini, added by Rithik at the hidden
+prompt. `provider test`: Groq "13 models listed", Gemini "58 models listed"; `provider refresh`:
+all 3 + 10 preset models exist live. Measured with `tools/run_metrics.py` (reads only the store).
+
+| Run | Template | Status | Wall | Calls | Tokens in + out | Median 1st prompt | Repairs | Waits | Fallbacks | 429s | Reviews independent | Forecast (p90) → actual |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `…220210` | decision-board | succeeded | 125 s | 15 | 14,285 + 7,188 | 526 | 1 | 0 | 13 | 0 | 5 yes / 4 no | 18.5 calls, 12.4k → 15, 21.5k (tokens 1.7× over) |
+| `…220717` | research-desk (first try) | failed → resumed → succeeded | 171 + 231 s | 40 | 54,554 + 10,535 | — | 0 | 3 | 24 + 6 | 1 | — | — |
+| `…222128` | research-desk | succeeded | 277 s | 23 | 71,366 + 9,065 | 509 | 0 | 3 | 6 | 1 | 5 / 1 | measured n=1: 40, 65.1k → 23, 80.4k (1.2×) |
+| `…222632` | startup-company | **unapproved** (task t4 failed) | 1,249 s | 57 | 186,786 + 23,431 | 953 | 0 | 31 (QA 1,411 s) | 27 | 8 | 27 / 1 | 35.5, 47.7k → 57, 210.2k (**4.4×**) |
+| `…224959` | software-team `--allow-exec` | succeeded | 466 s | 27 | 86,234 + 7,760 | 751 | 0 | 6 | 11 | 8 (Gemini daily) | 7 / 2 | 23.8, 36.9k → 27, 94.0k (**2.5×**) |
+| `…225900` | project-finisher on `m5-fixture` | succeeded | 123 s | 14 | 15,364 + 1,478 | 823 | 0 | 5 | 7 | 4 (Gemini daily) | 2 / 1 | 60.5, 281k → 14, 16.8k (median 71k: **4.2× over**) |
+| `…230536` | decision-board via API stream | succeeded | 146 s | 14 | 13,186 + 7,920 | — | 0 | 4 | 2 | 1 | 3 / 6 | measured n=1: 21.5k → 21.1k |
+
+Which model served which role (examples): council members were spread across gpt-oss-120b,
+gemini-3.6-flash, qwen3.8-27b and gpt-oss-20b; the fourth member cannot be independent with three
+families, and the run says so. Engineers and editors mixed gpt-oss-120b with Gemini Flash models
+(Gemini's 503s pushed them around); reviewers and QA landed on qwen3.8-27b, the one family neither
+builder used — which made Qwen's 8,000 TPM the pace-setter (QA waited 27 times in startup-company).
+
+**What real models broke, and the fix for each** (each fix has a regression test built from the
+live response or error):
+1. **Gemini 3 thinking ate the output budget** — a strict-JSON options list stopped after 154
+   visible tokens. Gemini now gets `reasoning_effort: "low"`; every call records `finish_reason`;
+   cut-off answers raise `agent.truncated`.
+2. **Gemini "503 high demand", 7–12 times a run** — a busy model now rests 30 s, 60 s, 120 s … up
+   to 10 min until it answers again (v0.1 rested 5–15 s and retried it at once).
+3. **Gemini 3 tool loops failed with 400 "Function call is missing a thought_signature"** — this
+   failed the first research-desk run. `tool_calls[].extra_content` is now kept and replayed to the
+   provider that issued it; calls made by another model get Google's documented placeholder
+   (`skip_thought_signature_validator`); a tool loop prefers to stay on its model. After the fix
+   the checker ran 7 tool turns on Gemini with no 400.
+4. **gemini-2.5-flash / 2.5-pro / 2.5-flash-lite answered 404 "no longer available to new users"**
+   — a 404 now takes the model out for the session; the three are gone from the preset and were
+   disabled in this config.
+5. **An analyst wrote its report as a text answer; an editor called `list_files` eight times in a
+   row and never saved `BRIEF.md`** — tasks that name a file ("Write market.md", "… into BRIEF.md")
+   are checked by code: one nudge, then Cadre saves the answer to the file (`agent.deliverable_saved`);
+   identical repeated reads are answered with "you already did this" instead of being run. The
+   fresh research-desk run then wrote all four files and was approved in round 1 (1 repeat caught).
+6. **A review was marked independent when it wasn't** — the editor worked on gpt-oss and answered
+   on Gemini; the checker avoided only Gemini. Reviews now avoid every family the builder used.
+7. **startup-company's t4 failed: "waited 299s for capacity and gave up"** — four QA reviews queued
+   on the one independent model. The per-call wait cap is now 15 min (`max_total_wait`), and
+   reviewers get the written files inline (capped) so a review needs fewer turns.
+8. **Gemini 429 "You exceeded your current quota" after 6–15 requests** — Google's quota details
+   are now parsed; a daily-quota 429 marks the model spent until its own reset and learns the
+   reported limit; the error text kept in notes is 600 characters, not 300.
+9. **Forecasts were off by up to 4.4×** — recalibrated from these runs (writers send ~2× their base
+   prompt, readers ~3–5k, outputs 200–700 by role; readers' context is sized from the project when
+   there is one). Template estimate (median tokens), old → new, each n = 1:
+   decision-board 12,231 → 17,470 (actual 21,473); research-desk 22,399 → 71,262 (80,431);
+   startup-company 32,168 → 121,678 (210,217); software-team 25,513 → 86,992 (93,994);
+   project-finisher on the fixture 71,120 → 18,688 (16,842). All now within 2×.
+10. **`cadre provider add` hung on the hidden prompt when no terminal could answer** — it now
+    fails at once and names where it looked (found while the key was missing).
+
+Also observed live: **header learning works** — `GET /api/quota` showed Groq's
+`x-ratelimit-remaining-tokens` 4,689 (reset 9.9 s) and remaining requests 971 (reset 2,490 s);
+Groq sent 1–8 429s per run anyway, which cooled the model for its `retry-after` and fell back.
+**Editing tools**: the project-finisher engineer used `search`-free line reads and one
+`edit_file`, correct first time on a CRLF file; software-team needed no edits; **0 misuses** in
+the two runs. **software-team's deliverable is real**: 87-line `app.py`, 124-line `test_app.py`,
+`Ran 10 tests … OK` when re-run by hand, and `app.py demo.csv` printed a correct Markdown table.
+**project-finisher** changed `line_count` on `cadre/20260917-225900-fe3c25` (one commit, the
+owner's identity, no trailer) while `main`'s HEAD `663e2f1` and an empty porcelain were unchanged.
+**Server memory**: 64.5 MB idle, **72.9 MB peak** while a run streamed 55 events (target < 150 MB).
+**Dashboard in a browser: still unverified** — the Chrome extension was not connected.
+
+Tests after M5: **170 passed, 1 skipped, 24 s**; ruff clean.
+
 ### M10 — multi-day runs — COMPLETE offline, 2026-09-17
 - **Park instead of fail (ADR-017)** — when every eligible model is blocked by a daily limit
   beyond `max_wait`, the run becomes `parked` with `resume_at` = the earliest reset + 30–120 s

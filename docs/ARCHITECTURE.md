@@ -249,6 +249,20 @@ a token, so the absolute numbers are estimates; the ratio is what the decision r
 hunks often enough that a failed patch costs more than it saves; an exact-match replace either
 applies or says why not.
 
+### ADR-023 — What live providers taught (M5, 2026-09-17)
+Provider-specific data that must round-trip (Gemini 3's `thought_signature` in
+`tool_calls[].extra_content`) is carried on `ToolCall.extra` with the issuing provider, replayed only
+to that provider, and replaced by Google's documented placeholder for foreign calls; a tool loop
+prefers its model (`STICKY_WAIT` 5 s). A 404 removes a model for the session (`ModelGone`). A 503
+rests a model on an escalating schedule. A daily-quota 429 (Google's `quotaId` contains `PerDay`)
+marks the model spent until its own reset. Per-provider request fields (`request_params`, Gemini:
+`reasoning_effort: low`) exist because thinking models spend the visible output budget. Tasks that
+name a file are checked by code (nudge, then save), and identical repeated reads are not re-run —
+both are cheaper and more reliable than prompting harder. Reviews avoid every family the builder
+used, and receive the written files inline. Alternatives rejected: a per-vendor SDK (ADR-001 still
+holds — each fix was a few lines in the one adapter), and "just retry" (it turned one broken
+signature into six failed attempts).
+
 ### ADR-022 — The repo map is injected context with a hard cap, not a tool (FR-13)
 **Decision.** Agents holding any file tool get a `REPO MAP` block instead of the plain listing:
 each text file's path and line count and, for Python files, the top-level `def`/`class` names from

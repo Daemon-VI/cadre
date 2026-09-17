@@ -25,13 +25,13 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M3** | Collaboration patterns, budgets, resume | — | done 2026-09-16 |
 | **M4** | CLI, REST API, dashboard, demo mode | — | done 2026-09-16 |
 | **P1–P3** | v1.0 requirements (SRS §4.8, FR-8…13), design (ADR-016…022), this plan | — | done 2026-09-17 |
-| **M5** | Live verification on real free keys | G1 | **blocked** — see below |
+| **M5** | Live verification on real free keys | G1 | done 2026-09-17 (Groq + Gemini; 10 live-found defects fixed) |
 | **M6** | Provider catalogue, daily clocks, data policy | G3, G5, G8 · FR-10, FR-12 | done 2026-09-17 (offline; live refresh pending M5) |
 | **M7** | Usage ledger and forecast | G6 · FR-11 | done 2026-09-17 (offline; estimates to be checked against M5) |
 | **M8** | Code-editing tools and repo map | G7 · FR-13 | done 2026-09-17 (offline) |
 | **M9** | Project mode | G2 · FR-8 | done 2026-09-17 (offline, git fixtures) |
 | **M10** | Multi-day runs | G4 · FR-9 | done 2026-09-17 (offline, fake clock; scheduler not installed) |
-| **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | blocked with M5 (needs live keys) |
+| **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | next |
 | M12 | Container runner for checks | — | after v1.0 |
 | M13 | Multi-user organisations | — | after v1.0 |
 | M14 | Memory across runs | — | after v1.0 |

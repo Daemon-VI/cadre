@@ -58,6 +58,10 @@ class Preset:
     #: does the free tier train on prompts? yes / no / unknown (ADR-020)
     trains_on_free_data: str = "unknown"
     policy_source: str = ""
+    #: extra request fields sent on every call to this provider
+    request_params: dict = field(default_factory=dict)
+    #: attached to replayed tool calls this provider did not issue
+    unsigned_tool_call_extra: dict | None = None
 
 
 _GROQ = dict(rpm=30, rpd=1000, tpm=8000, tpd=200_000, source="docs")
@@ -65,7 +69,8 @@ _GROQ = dict(rpm=30, rpd=1000, tpm=8000, tpd=200_000, source="docs")
 # of 20 and Flash-Lite RPD of 500 are third-party reports from Sept 2026; RPM/TPM are guesses.
 _G_FLASH = dict(rpm=5, rpd=20, tpm=250_000, source="reported")
 _G_LITE = dict(rpm=10, rpd=500, tpm=250_000, source="reported")
-_G_OLD = dict(rpm=5, rpd=20, tpm=250_000, source="guess")
+# Gemini 2.5 Flash, 2.5 Pro and 2.5 Flash-Lite are listed by /models but answered 404 "no longer
+# available to new users" on 2026-09-17, so they are not offered.
 
 PRESETS: dict[str, Preset] = {p.id: p for p in [
     Preset(
@@ -97,15 +102,20 @@ PRESETS: dict[str, Preset] = {p.id: p for p in [
             ModelPreset("gemini-3.6-flash", "strong", "gemini", **_G_FLASH),
             ModelPreset("gemini-3.5-flash", "strong", "gemini", **_G_FLASH),
             ModelPreset("gemini-3-flash-preview", "strong", "gemini", **{**_G_FLASH, "source": "guess"}),
-            ModelPreset("gemini-2.5-flash", "strong", "gemini", **_G_OLD),
-            ModelPreset("gemini-2.5-pro", "strong", "gemini", **{**_G_OLD, "rpm": 2}),
             ModelPreset("gemini-3.5-flash-lite", "fast", "gemini", **_G_LITE),
             ModelPreset("gemini-3.1-flash-lite", "fast", "gemini", **_G_LITE),
-            ModelPreset("gemini-2.5-flash-lite", "fast", "gemini", **{**_G_LITE, "rpd": 100, "source": "guess"}),
         ),
         day_reset="America/Los_Angeles",
         day_reset_source="https://ai.google.dev/gemini-api/docs/rate-limits",
         trains_on_free_data="yes", policy_source="https://ai.google.dev/gemini-api/docs/pricing",
+        # Gemini 3 always thinks, and thinking spends the output budget: on 2026-09-17 a strict-JSON
+        # reply stopped after 154 visible tokens. "low" is accepted by every Gemini model here
+        # (https://ai.google.dev/gemini-api/docs/openai; thinking cannot be off for Gemini 3).
+        request_params={"reasoning_effort": "low"},
+        # Gemini 3 rejects a replayed function call without a thought signature (400, seen live
+        # 2026-09-17). Its own signatures are replayed; calls made by another model get Google's
+        # documented last-resort placeholder.
+        unsigned_tool_call_extra={"google": {"thought_signature": "skip_thought_signature_validator"}},
     ),
     Preset(
         "openrouter", "OpenRouter (free models)", "https://openrouter.ai/api/v1",

@@ -8,6 +8,7 @@ workspace listing, recent team notes, pattern-specific context).
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -39,6 +40,8 @@ class AgentResult:
     text: str
     model: str = ""
     family: str = ""
+    #: every model family this step used — a review must avoid all of them
+    families: list[str] = field(default_factory=list)
     independent: bool | None = None
     turns: int = 0
     tool_calls: int = 0
@@ -47,7 +50,7 @@ class AgentResult:
 
     def data(self) -> dict[str, Any]:
         return {"agent": self.agent, "model": self.model, "family": self.family,
-                "independent": self.independent,
+                "families": self.families, "independent": self.independent,
                 "turns": self.turns, "tool_calls": self.tool_calls, "files": self.files,
                 "incomplete": self.incomplete}
 
@@ -86,6 +89,31 @@ def user_prompt(ctx: RunContext, task: str, context: str, tools: list[str] | Non
     return "\n\n".join(parts)
 
 
+READ_TOOLS = frozenset({"list_files", "read_file", "search"})
+WRITE_TOOLS = frozenset({"write_file", "edit_file"})
+_DELIVERABLE = re.compile(
+    r"(?:\b(?:write|create|save|produce)\b[^.\n]{0,40}?|\binto\s+)`?([\w./-]+\.(?:md|txt|json|csv|ya?ml|html|toml|py))\b",
+    re.I)
+MIN_SAVED_ANSWER = 200
+
+
+def deliverables(task: str) -> list[str]:
+    """Files a task explicitly asks the agent to write ("Write market.md", "… into BRIEF.md")."""
+    return list(dict.fromkeys(m.group(1) for m in _DELIVERABLE.finditer(task)))
+
+
+def _missing(ctx: RunContext, names: list[str]) -> list[str]:
+    missing = []
+    for n in names:
+        try:
+            target, _ = ctx.workspace.resolve(n)
+        except ValueError:
+            continue
+        if not target.exists():
+            missing.append(n)
+    return missing
+
+
 async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
                     context: str = "", avoid: tuple[str, ...] = (),
                     tools: list[str] | None = None, json_reply: str | None = None) -> AgentResult:
@@ -96,11 +124,23 @@ async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
     result = AgentResult(agent=agent.id, text="")
     ctx.emit("agent.start", agent=agent.id, step=step, task=task[:400])
     nudged = False
+    # M5, 2026-09-17: a live editor called list_files eight times in a row, and a live analyst wrote
+    # its report as a text answer instead of saving the file its task named. Both are checked here
+    # by code rather than by asking the model to behave.
+    wanted = deliverables(task) if json_reply is None and WRITE_TOOLS.intersection(allowed) else []
+    delivery_nudged = False
+    seen: set[str] = set()
+
+    def note_model(call) -> None:
+        result.model, result.family = call.entry.key, call.entry.family
+        if call.entry.family not in result.families:
+            result.families.append(call.entry.family)
+
     for turn in range(1, agent.max_turns + 1):
-        call = await ctx.call(agent, messages, specs, step, avoid)
+        call = await ctx.call(agent, messages, specs, step, avoid, prefer=result.model or None)
         resp = call.response
         result.turns = turn
-        result.model, result.family = call.entry.key, call.entry.family
+        note_model(call)
         if avoid:
             result.independent = call.independent if result.independent is None \
                 else result.independent and call.independent
@@ -108,9 +148,20 @@ async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
             calls = resp.tool_calls[:MAX_CALLS_PER_TURN]
             messages.append(Message(role="assistant", content=resp.content, tool_calls=calls))
             for tc in calls:
+                key = tc.name + json.dumps(tc.arguments, sort_keys=True, default=str)
+                if tc.name in READ_TOOLS and key in seen:
+                    text = (f"error: you already called {tc.name} with these arguments and nothing has "
+                            "changed since. Do not repeat it; use what you have, "
+                            + (f"save your work to {', '.join(wanted)} with write_file, " if wanted else "")
+                            + "or give your final answer.")
+                    ctx.emit("agent.repeat", agent=agent.id, step=step, tool=tc.name, args=tc.arguments)
+                    messages.append(Message(role="tool", tool_call_id=tc.id, name=tc.name, content=text))
+                    continue
+                seen.add(key)
                 ok, text = await execute(ctx, agent.id, allowed, tc, step)
                 result.tool_calls += 1
-                if ok and tc.name in ("write_file", "edit_file"):
+                if ok and tc.name in WRITE_TOOLS:
+                    seen.clear()  # the workspace changed; reads may now differ
                     path = str(tc.arguments.get("path", ""))
                     if path and path not in result.files:
                         result.files.append(path)
@@ -120,7 +171,17 @@ async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
             nudged = True
             messages.append(Message(role="user", content="Your reply was empty. Give your final answer now."))
             continue
+        missing = _missing(ctx, wanted)
+        if missing and not delivery_nudged and turn < agent.max_turns:
+            delivery_nudged = True
+            ctx.emit("agent.nudged", agent=agent.id, step=step, missing=missing)
+            messages.append(Message(role="assistant", content=resp.content.strip() or "(no answer)"))
+            messages.append(Message(role="user", content=(
+                f"Your task asks you to save your work as {', '.join(missing)}, which does not exist "
+                "yet. Call write_file now to save it, then reply with one line.")))
+            continue
         result.text = resp.content.strip()
+        _save_undelivered(ctx, agent, step, wanted, result)
         ctx.emit("agent.answer", agent=agent.id, step=step, text=result.text[:2000],
                  model=result.model, turns=turn)
         return result
@@ -128,11 +189,26 @@ async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
         "You have used all your turns. Reply now with your final answer"
         + (" as the JSON object" if json_reply else "") + ", without calling any tool.")))
     call = await ctx.call(agent, messages, [], step, avoid)
+    note_model(call)
     result.text = call.response.content.strip()
     result.incomplete = True
+    _save_undelivered(ctx, agent, step, wanted, result)
     ctx.emit("agent.answer", agent=agent.id, step=step, text=result.text[:2000],
              model=call.entry.key, turns=result.turns, incomplete=True)
     return result
+
+
+def _save_undelivered(ctx: RunContext, agent: AgentSpec, step: str, wanted: list[str],
+                      result: AgentResult) -> None:
+    """Last resort: the agent answered in text but never saved the file its task named."""
+    missing = _missing(ctx, wanted)
+    if not missing or len(result.text) < MIN_SAVED_ANSWER:
+        return
+    path = missing[0]
+    ctx.workspace.write(path, result.text + "\n", agent.id)
+    result.files.append(path)
+    ctx.emit("agent.deliverable_saved", agent=agent.id, step=step, path=path,
+             note="the agent answered in text instead of writing the file; Cadre saved the answer")
 
 
 Validator = Callable[[Any], str | None]  # returns an error message, or None when valid

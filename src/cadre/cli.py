@@ -388,9 +388,10 @@ def usage(days: int = typer.Option(7, "--days", "-d", help="how many days back")
     con.print(t)
 
 
-def _forecast_lines(manager: RunManager, org_text: str, goal: str, private: bool, demo: bool) -> list[str]:
+def _forecast_lines(manager: RunManager, org_text: str, goal: str, private: bool, demo: bool,
+                    project: str | None = None) -> list[str]:
     org = load_org_text(org_text)
-    est = estimate(manager.store, org, goal)
+    est = estimate(manager.store, org, goal, project)
     router = manager.router(demo)
     return forecast(est, router, private or org.privacy == "private").lines()
 
@@ -406,7 +407,7 @@ def forecast_cmd(org: str, goal: str,
     manager = RunManager(h)
     try:
         _, text = find_org_text(org, h.orgs_dir)
-        for line in _forecast_lines(manager, text, goal, private, demo):
+        for line in _forecast_lines(manager, text, goal, private, demo, project):
             con.print(line, markup=False)
     except (OrgError, FileNotFoundError) as e:
         fail(str(e))
@@ -634,8 +635,9 @@ def run(
     con.print(f"Run [bold]{run_id}[/] · {org}{' · demo mode' if demo else ''}")
     if not quiet:
         try:
-            for line in _forecast_lines(manager, manager.store.get_run(run_id)["org_yaml"], goal,
-                                        private, demo):
+            row = manager.store.get_run(run_id)
+            for line in _forecast_lines(manager, row["org_yaml"], goal, private, demo,
+                                        row.get("project_path")):
                 con.print(f"[dim]{line}[/]", markup=True, highlight=False)
         except Exception as e:  # a forecast must never stop a run from starting
             con.print(f"[dim]Forecast unavailable: {e}[/]")

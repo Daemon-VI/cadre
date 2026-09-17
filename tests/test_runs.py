@@ -107,3 +107,16 @@ def test_stale_active_runs_are_marked_interrupted(home):
     store._x("UPDATE runs SET updated = updated - 1000 WHERE id=?", (rid,))
     assert store.mark_stale_interrupted() == [rid]
     assert store.get_run(rid)["status"] == "interrupted"
+
+
+async def test_forecast_is_recorded_once_per_run(home):
+    script = by_agent({"a1": ["one"], "a2": [ProviderError("down"), "two"]})
+    router, *_ = two_family_router(script)
+    m = RunManager(home, router=router)
+    rid = m.create("", "goal", org_yaml=SEQ_ORG)
+    await m.execute(rid)
+    await m.execute(rid)
+    events = m.store.events(rid, kinds=("run.forecast",))
+    assert len(events) == 1
+    assert events[0]["data"]["verdict"] == "fits_now"
+    assert events[0]["data"]["estimate"]["basis"].startswith("no history")

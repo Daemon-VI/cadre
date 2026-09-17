@@ -80,6 +80,7 @@ class RunIn(BaseModel):
 
 class ForecastIn(BaseModel):
     org: str | None = None
+    project: str | None = None
     yaml: str | None = None
     goal: str
     privacy: str | None = None
@@ -323,7 +324,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
             raise HTTPException(422, {"errors": e.errors}) from None
         except FileNotFoundError as e:
             raise HTTPException(404, str(e)) from None
-        est = estimate(store, org, body.goal)
+        est = estimate(store, org, body.goal, body.project)
         private = (body.privacy or org.privacy) == "private"
         result = forecast(est, manager.router(body.demo), private)
         return {**result.as_dict(), "lines": result.lines()}
