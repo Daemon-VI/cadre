@@ -262,6 +262,8 @@ rule — so no live call has been made. The Groq preset now includes `qwen/qwen3
 second model family on the one free key (reviews can be independent).
 
 ## Where to pick up
+0. **Next session prompt:** `docs/PROMPT_M5_M11.md` (live verification → capstone → v1.0),
+   written 2026-09-17. Allow `Bash(uv run cadre:*)` first.
 1. **Unblock M5 (Rithik).** The Groq key is already in Windows Credential Manager (copied from
    Tessera on 2026-09-17, never printed). This session's auto-mode classifier refused every
    command that reads it. Either add an allow rule with `/permissions` → `Bash(uv run cadre:*)`,

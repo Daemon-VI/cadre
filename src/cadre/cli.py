@@ -112,6 +112,11 @@ def _read_key(pid: str, env: str | None, key_stdin: bool) -> str | None:
     if found:
         con.print(f"Using the key already available from {found}.")
         return None
+    if not sys.stdin.isatty():
+        # a hidden prompt with nobody at the keyboard hangs forever; say where we looked instead
+        fail(f"no key found for {pid} (looked in {env_name(pid)}"
+             + (f", {env}" if env else "") + f" and the OS credential store entry cadre/{pid}). "
+             f"Run `uv run cadre provider add {pid}` in an interactive terminal, or use --key-stdin.")
     return typer.prompt(f"API key for {pid} (input hidden)", hide_input=True).strip() or None
 
 
