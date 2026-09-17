@@ -14,6 +14,7 @@ run produces lives under the same home:
 from __future__ import annotations
 
 import os
+import re
 import secrets as pysecrets
 from pathlib import Path
 
@@ -21,7 +22,8 @@ import httpx
 import yaml
 from pydantic import BaseModel, Field
 
-from .presets import PRESETS, ModelPreset, guess_family, guess_tier
+from .clocks import validate
+from .presets import PRESETS, ModelPreset, guess_family, guess_tier, is_chat_model
 from .providers import LLMProvider, OpenAICompatProvider
 from .quota import Limits, QuotaBook
 from .router import ModelEntry, Router
@@ -39,9 +41,17 @@ class ModelConfig(BaseModel):
     rpd: int | None = None
     tpm: int | None = None
     tpd: int | None = None
+    #: where the limits came from: docs / reported / guess / owner (set by the owner)
+    source: str = ""
 
-    def limits(self) -> Limits:
-        return Limits(rpm=self.rpm, rpd=self.rpd, tpm=self.tpm, tpd=self.tpd)
+    def limits(self, reserve_pct: int = 0) -> Limits:
+        """Limits as the router should see them; daily caps shrink by `reserve_pct` (FR-11)."""
+        keep = 1 - max(0, min(90, reserve_pct)) / 100
+
+        def cap(v: int | None) -> int | None:
+            return None if v is None else max(1, int(v * keep))
+
+        return Limits(rpm=self.rpm, rpd=cap(self.rpd), tpm=self.tpm, tpd=cap(self.tpd))
 
 
 class ProviderConfig(BaseModel):
@@ -55,6 +65,25 @@ class ProviderConfig(BaseModel):
     enabled: bool = True
     params: dict[str, str] = Field(default_factory=dict)
     models: list[ModelConfig] = Field(default_factory=list)
+    # None means "whatever the preset says" — a v0.1 config.yaml has none of these
+    day_reset: str | None = None
+    trains_on_free_data: str | None = None
+    reserve_pct: int = 10
+
+    def _preset(self):
+        return PRESETS.get(self.preset)
+
+    def clock(self) -> str:
+        p = self._preset()
+        return validate(self.day_reset or (p.day_reset if p else "UTC"))
+
+    def trains(self) -> str:
+        if self.trains_on_free_data:
+            return self.trains_on_free_data
+        p = self._preset()
+        if self.local:
+            return "no"
+        return p.trains_on_free_data if p else "unknown"
 
     def url(self) -> str:
         try:
@@ -77,17 +106,19 @@ class CadreConfig(BaseModel):
         return next((p for p in self.providers if p.id == pid), None)
 
 
-def model_from_preset(mp: ModelPreset, priority: int) -> ModelConfig:
+def model_from_preset(mp: ModelPreset, priority: int, preset_source: str = "") -> ModelConfig:
     return ModelConfig(name=mp.name, tier=mp.tier, family=mp.family or guess_family(mp.name),
                        protocol=mp.protocol, priority=priority,
-                       rpm=mp.rpm, rpd=mp.rpd, tpm=mp.tpm, tpd=mp.tpd)
+                       rpm=mp.rpm, rpd=mp.rpd, tpm=mp.tpm, tpd=mp.tpd,
+                       source=mp.source or preset_source)
 
 
 def discovered_model(preset_id: str, name: str, priority: int) -> ModelConfig:
     p = PRESETS.get(preset_id)
     d = p.default_limits if p and p.default_limits else ModelPreset(name)
     return ModelConfig(name=name, tier=guess_tier(name), family=guess_family(name),
-                       priority=priority, rpm=d.rpm, rpd=d.rpd, tpm=d.tpm, tpd=d.tpd)
+                       priority=priority, rpm=d.rpm, rpd=d.rpd, tpm=d.tpm, tpd=d.tpd,
+                       source=(p.source if p and p.default_limits else "guess"))
 
 
 def provider_from_preset(preset_id: str, *, pid: str | None = None, base_url: str | None = None,
@@ -104,7 +135,7 @@ def provider_from_preset(preset_id: str, *, pid: str | None = None, base_url: st
     chosen: list[ModelConfig] = []
     for i, name in enumerate(models if models else [m.name for m in p.models]):
         prio = (i + 1) * 10
-        chosen.append(model_from_preset(known[name], prio) if name in known
+        chosen.append(model_from_preset(known[name], prio, p.source) if name in known
                       else discovered_model(preset_id, name, prio))
     return ProviderConfig(id=pid, preset=p.id, label=p.label, base_url=url,
                           key_ref=None if p.local else pid, env=p.env, local=p.local,
@@ -200,9 +231,62 @@ def build_router(cfg: CadreConfig, store: SecretStore | None = None,
             models.append(ModelEntry(provider=pc.id, name=mc.name, tier=mc.tier,
                                      family=mc.family or guess_family(mc.name),
                                      protocol=mc.protocol, priority=mc.priority,
-                                     limits=mc.limits(), enabled=mc.enabled))
+                                     limits=mc.limits(pc.reserve_pct), enabled=mc.enabled,
+                                     trains=pc.trains(), day_reset=pc.clock()))
     providers.update(extra or {})
     models.extend(extra_models or [])
     router = Router(providers, models, quotas, max_wait=cfg.settings.max_wait,
                     max_concurrency=cfg.settings.max_concurrency)
     return router, warnings
+
+
+class ModelDiff(BaseModel):
+    provider: str
+    added: list[str] = Field(default_factory=list)
+    removed: list[str] = Field(default_factory=list)
+    kept: list[str] = Field(default_factory=list)
+    error: str = ""
+
+
+def diff_models(pc: ProviderConfig, remote: list[str]) -> ModelDiff:
+    """What the provider serves today against what `config.yaml` lists (FR-10, AC-10.3)."""
+    p = PRESETS.get(pc.preset)
+    names = [n for n in remote if is_chat_model(n)]
+    if p and p.discover_filter:
+        names = [n for n in names if re.search(p.discover_filter, n)]
+    elif p and p.models:
+        # a listed catalogue (Gemini, Groq): only the free chat models the preset knows about
+        known = {m.name for m in p.models}
+        names = [n for n in names if n in known]
+    configured = [m.name for m in pc.models]
+    return ModelDiff(provider=pc.id,
+                     added=sorted(set(names) - set(configured)),
+                     removed=sorted(set(configured) - set(remote)) if remote else [],
+                     kept=sorted(set(configured) & set(remote)))
+
+
+def apply_diff(pc: ProviderConfig, diff: ModelDiff) -> None:
+    """Add new models and disable vanished ones. Never touches an existing model's limits."""
+    p = PRESETS.get(pc.preset)
+    known = {m.name: m for m in (p.models if p else ())}
+    base = max((m.priority for m in pc.models), default=0)
+    for i, name in enumerate(diff.added):
+        prio = base + (i + 1) * 10
+        pc.models.append(model_from_preset(known[name], prio, p.source) if name in known
+                         else discovered_model(pc.preset, name, prio))
+    for m in pc.models:
+        if m.name in diff.removed:
+            m.enabled = False
+
+
+async def refresh_provider(pc: ProviderConfig, store: SecretStore | None = None,
+                           transport: httpx.AsyncBaseTransport | None = None) -> ModelDiff:
+    """Ask the endpoint what it serves and compare (never changes anything by itself)."""
+    prov = make_provider(pc, store or SecretStore(), transport)
+    try:
+        remote = await prov.list_models()
+    except Exception as e:  # a provider that cannot list still gets a report line
+        return ModelDiff(provider=pc.id, error=str(e) or type(e).__name__)
+    finally:
+        await prov.aclose()
+    return diff_models(pc, remote)

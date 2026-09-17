@@ -23,7 +23,15 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .config import Home, discovered_model, make_provider, provider_from_preset
+from .clocks import DayClock, ist
+from .config import (
+    Home,
+    apply_diff,
+    discovered_model,
+    make_provider,
+    provider_from_preset,
+    refresh_provider,
+)
 from .engine import RunOptions
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
@@ -186,17 +194,19 @@ def provider_list() -> None:
         return
     store = SecretStore()
     t = Table()
-    for col in ("provider", "key", "model", "tier", "family", "rpm", "rpd", "tpm", "tpd"):
+    for col in ("provider", "key", "model", "tier", "family", "rpm", "rpd", "tpm", "tpd", "source"):
         t.add_column(col)
     for pc in cfg.providers:
+        con.print(f"[bold]{pc.id}[/]: day resets {pc.clock()} · trains on free data: "
+                  f"{pc.trains()} · reserve {pc.reserve_pct}%")
         where = store.where(pc.key_ref, pc.env) if pc.key_ref else "not needed"
         for i, m in enumerate(pc.models or [None]):
             if m is None:
-                t.add_row(pc.id, where or "[red]missing[/]", "-", "", "", "", "", "", "")
+                t.add_row(pc.id, where or "[red]missing[/]", "-", "", "", "", "", "", "", "")
                 continue
             t.add_row(pc.id if i == 0 else "", (where or "[red]missing[/]") if i == 0 else "",
                       m.name + ("" if m.enabled else " (off)"), m.tier, m.family,
-                      *[str(v) if v else "-" for v in (m.rpm, m.rpd, m.tpm, m.tpd)])
+                      *[str(v) if v else "-" for v in (m.rpm, m.rpd, m.tpm, m.tpd)], m.source or "-")
     con.print(t)
 
 
@@ -244,6 +254,37 @@ def provider_models(pid: str, all_models: bool = typer.Option(False, "--all")) -
     for n in names:
         con.print(("* " if n in configured else "  ") + n)
     con.print(f"[dim]{len(names)} model(s); * = configured[/]")
+
+
+@provider_app.command("refresh")
+def provider_refresh(pid: str | None = typer.Argument(None, help="one provider; default all"),
+                     apply: bool = typer.Option(False, "--apply",
+                                                help="add new models, disable vanished ones")) -> None:
+    """Compare each provider's current catalogue with config.yaml (limits you set are never changed)."""
+    h = home()
+    cfg = h.load_config()
+    targets = [cfg.provider(pid)] if pid else list(cfg.providers)
+    if pid and targets[0] is None:
+        fail(f"no provider {pid!r}")
+    changed = False
+    for pc in targets:
+        d = run_async(refresh_provider(pc))
+        if d.error:
+            con.print(f"[yellow]{pc.id}: could not list models — {d.error}[/]", markup=True)
+            continue
+        con.print(f"[bold]{pc.id}[/]: {len(d.kept)} unchanged")
+        for n in d.added:
+            con.print(f"  [green]+ {n}[/] (new at the provider)")
+        for n in d.removed:
+            con.print(f"  [red]- {n}[/] (no longer listed)")
+        if apply and (d.added or d.removed):
+            apply_diff(pc, d)
+            changed = True
+    if changed:
+        h.save_config(cfg)
+        con.print("config.yaml updated (new models added, vanished ones disabled).")
+    elif not apply:
+        con.print("[dim]Nothing changed. Use --apply to add new models and disable vanished ones.[/]")
 
 
 @provider_app.command("set-model")
@@ -299,14 +340,20 @@ def quota() -> None:
     h = home()
     cfg = h.load_config()
     store = Store(h.db_path)
-    day = time.strftime("%Y-%m-%d", time.gmtime())
-    t = Table(title=f"Usage today (UTC {day})")
-    for col in ("model", "tier", "requests", "rpd", "tokens", "tpd"):
+    now = time.time()
+    t = Table(title="Usage in each provider's current day")
+    for col in ("model", "tier", "day", "requests", "rpd", "tokens", "tpd", "resets"):
         t.add_column(col)
     for pc in cfg.providers:
+        clock = DayClock(pc.clock())
         for m in pc.models:
-            req, tok = store.quota_load(f"{pc.id}/{m.name}", day)
-            t.add_row(f"{pc.id}/{m.name}", m.tier, str(req), str(m.rpd or "-"), str(tok), str(m.tpd or "-"))
+            key = f"{pc.id}/{m.name}"
+            req = tok = 0
+            for day in clock.window_keys(now):
+                r, k = store.quota_load(key, day)
+                req, tok = req + r, tok + k
+            t.add_row(key, m.tier, clock.key(now), str(req), str(m.rpd or "-"), str(tok),
+                      str(m.tpd or "-"), ist(clock.next_reset(now)))
     con.print(t)
 
 
@@ -486,6 +533,8 @@ def run(
     allow_exec: bool = typer.Option(False, "--allow-exec", help="let checks run model-written code without asking"),
     yes: bool = typer.Option(False, "--yes", "-y", help="auto-approve gates and questions"),
     demo: bool = typer.Option(False, "--demo", help="offline scripted model; no key needed"),
+    private: bool = typer.Option(False, "--private",
+                                 help="never use a provider whose free tier trains on prompts"),
     wait_elsewhere: bool = typer.Option(False, "--approve-elsewhere",
                                         help="leave approvals to the dashboard / `cadre approve`"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
@@ -495,7 +544,9 @@ def run(
     h = home()
     manager = RunManager(h)
     try:
-        run_id = manager.create(org, goal, RunOptions(allow_exec=allow_exec, auto_approve=yes), demo=demo)
+        run_id = manager.create(org, goal, RunOptions(allow_exec=allow_exec, auto_approve=yes,
+                                                      privacy="private" if private else None),
+                                demo=demo)
     except (OrgError, FileNotFoundError, ValueError) as e:
         fail(str(e))
     con.print(f"Run [bold]{run_id}[/] · {org}{' · demo mode' if demo else ''}")

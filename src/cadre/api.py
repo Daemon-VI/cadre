@@ -24,7 +24,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from pydantic import BaseModel, Field
 
 from . import __version__
-from .config import ModelConfig, discovered_model, make_provider, provider_from_preset
+from .config import (
+    ModelConfig,
+    apply_diff,
+    discovered_model,
+    make_provider,
+    provider_from_preset,
+    refresh_provider,
+)
 from .engine import RunOptions
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
@@ -64,6 +71,7 @@ class RunIn(BaseModel):
     allow_exec: bool = False
     auto_approve: bool = False
     demo: bool = False
+    privacy: str | None = None
 
 
 class DecisionIn(BaseModel):
@@ -145,6 +153,8 @@ def create_app(manager: RunManager, *, token: str | None = None,
             {"id": p.id, "label": p.label, "free": p.free, "local": p.local, "signup": p.signup,
              "source": p.source, "note": p.note, "params": list(p.params),
              "discover": bool(p.discover_filter) or not p.models,
+             "day_reset": p.day_reset, "trains_on_free_data": p.trains_on_free_data,
+             "policy_source": p.policy_source,
              "models": [m.name for m in p.models]} for p in PRESETS.values()]}
 
     # ------------------------------------------------------------------ providers
@@ -153,6 +163,8 @@ def create_app(manager: RunManager, *, token: str | None = None,
         return {"id": pc.id, "preset": pc.preset, "label": pc.label, "base_url": pc.base_url,
                 "local": pc.local, "enabled": pc.enabled, "key": where or "missing",
                 "disabled_reason": manager.disabled_reason(pc.id),
+                "day_reset": pc.clock(), "trains_on_free_data": pc.trains(),
+                "reserve_pct": pc.reserve_pct,
                 "models": [m.model_dump() for m in pc.models]}
 
     @app.get("/api/providers", dependencies=secured)
@@ -235,6 +247,19 @@ def create_app(manager: RunManager, *, token: str | None = None,
         flt = PRESETS[pc.preset].discover_filter if pc.preset in PRESETS else None
         return {"models": names, "suggested": [n for n in names if not flt or re.search(flt, n)]}
 
+    @app.post("/api/providers/{pid}/refresh", dependencies=secured)
+    async def refresh(pid: str, apply: bool = False) -> dict[str, Any]:
+        cfg = home.load_config()
+        pc = cfg.provider(pid)
+        if pc is None:
+            raise HTTPException(404, "no such provider")
+        diff = await refresh_provider(pc, manager.secrets, manager.transport)
+        if apply and not diff.error and (diff.added or diff.removed):
+            apply_diff(pc, diff)
+            home.save_config(cfg)
+            await manager.reload()
+        return {**diff.model_dump(), "applied": apply and not diff.error}
+
     @app.delete("/api/providers/{pid}", dependencies=secured)
     async def remove_provider(pid: str) -> dict[str, Any]:
         cfg = home.load_config()
@@ -254,6 +279,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         for m in router.models:
             snap = router.quota(m).snapshot()
             snap.update(provider=m.provider, model=m.name, tier=m.tier, family=m.family,
+                        trains_on_free_data=m.trains,
                         usable=m.provider in router.providers and m.provider not in router.disabled)
             rows.append(snap)
         return rows
@@ -308,8 +334,11 @@ def create_app(manager: RunManager, *, token: str | None = None,
         if not body.org and not body.yaml:
             raise HTTPException(400, "give an org name or org yaml")
         try:
+            if body.privacy not in (None, "standard", "private"):
+                raise ValueError("privacy must be standard or private")
             rid = manager.create(body.org or "", body.goal,
-                                 RunOptions(allow_exec=body.allow_exec, auto_approve=body.auto_approve),
+                                 RunOptions(allow_exec=body.allow_exec, auto_approve=body.auto_approve,
+                                            privacy=body.privacy),
                                  demo=body.demo, org_yaml=body.yaml)
         except OrgError as e:
             raise HTTPException(422, {"errors": e.errors}) from None

@@ -137,6 +137,8 @@ for _m in (SequenceStep, ParallelStep):
 class OrgSpec(_Strict):
     name: str
     description: str = ""
+    #: private: never route to a provider whose free tier trains (or may train) on prompts
+    privacy: Literal["standard", "private"] = "standard"
     agents: list[AgentSpec] = Field(min_length=1)
     checks: list[CheckSpec] = Field(default_factory=list)
     budget: Budget = Field(default_factory=Budget)

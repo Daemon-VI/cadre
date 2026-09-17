@@ -132,6 +132,29 @@ products: Yes"; Cloudflare: "All limits reset daily at 00:00 UTC", no training; 
 `qwen/qwen3.8-27b` on the free plan at 30 RPM / 1K RPD / 8K TPM / 200K TPD; DeepSeek's own API is
 paid and OpenRouter lists no DeepSeek `:free` model).
 
+### M6 — provider catalogue, day clocks, data policy — COMPLETE offline, 2026-09-17
+- **Catalogue** — Google AI Studio is now ten separate chat-model buckets (from its pricing page,
+  updated 2026-09-16); Groq has three (two families); every preset model carries `source`
+  (`docs` / `reported` / `guess`) and `CHECKED = 2026-09-17`. DeepSeek is labelled paid with its
+  current ids (`deepseek-flash`, `deepseek-v4-pro`). Test: a 19-call burst against the Gemini
+  preset spread across ≥ 4 buckets with none above its 5 RPM. OK
+- **Day clocks (ADR-018)** — `clocks.py`; Gemini `America/Los_Angeles`, Cloudflare and OpenRouter
+  `UTC`, Groq `rolling` (hourly buckets). Observed in `cadre quota`: Gemini's next reset shown as
+  "18 Sep 12:30 IST" (midnight PDT). Today's UTC counters carry over when a model's clock changes
+  (tested). `tzdata` added because Windows has no zone database. OK
+- **Data policy (ADR-020)** — `trains_on_free_data` + source URL per preset; `--private` /
+  `privacy: private` filters the router; `privacy.excluded` lists what was dropped; a private run
+  with nothing left failed before any call (provider call count 0). A private demo run of
+  decision-board succeeded from the CLI. OK
+- **Refresh** — `cadre provider refresh [id] [--apply]` and `POST /api/providers/{id}/refresh`:
+  Gemini's `models/` prefix stripped; a listed catalogue only adds free chat models it knows;
+  OpenRouter adds only `:free`; an owner-set limit survived `--apply` (tested). **Live refresh
+  unverified** — it needs a key the session could not read.
+- **Migration** — `PRAGMA user_version` 0 → 2 adds `project_path, base, branch, resume_at,
+  active_seconds, privacy` to `runs`; a hand-built v0.1 database kept its run, usage and quota
+  rows (tested). `reserve_pct` (default 10) already shrinks daily caps for the router.
+- Tests: **116 passed, 1 skipped, 11.1 s**; ruff clean.
+
 ### M5 — blocked on a permission (2026-09-17)
 Rithik authorised using Tessera's Groq key and copied it into Cadre's Credential Manager entry
 himself (his command printed `copied`). The session's auto-mode safety classifier then refused,
@@ -144,8 +167,8 @@ second model family on the one free key (reviews can be independent).
    run it yourself with a leading `!`:
    `! cd /c/Users/Rishi/cadre && uv run cadre provider add groq` (it finds the copied key; no
    prompt), then the four template runs listed under M5 in `ROADMAP.md`. Record the numbers here.
-2. Meanwhile the offline milestones continue in order: **M6** (catalogue, clocks, privacy) →
-   M7 → M8 → M9 → M10, each committed as `Cadre M<n>: …`.
+2. Meanwhile the offline milestones continue: M6 done → **M7** (usage ledger, forecast) → M8 →
+   M9 → M10, each committed as `Cadre M<n>: …`.
 3. Look at the dashboard in a browser (Chrome extension was not connected on 2026-09-16).
 
 ## Environment

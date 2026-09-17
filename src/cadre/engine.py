@@ -68,9 +68,11 @@ class StepFailed(Exception):
 class RunOptions:
     allow_exec: bool = False
     auto_approve: bool = False
+    privacy: str | None = None  # overrides the org's `privacy` when set
 
     def as_dict(self) -> dict[str, Any]:
-        return {"allow_exec": self.allow_exec, "auto_approve": self.auto_approve}
+        return {"allow_exec": self.allow_exec, "auto_approve": self.auto_approve,
+                "privacy": self.privacy}
 
 
 Approver = Callable[[str, str, str | None], Awaitable[tuple[bool, str]]]
@@ -131,6 +133,7 @@ class RunContext:
         self.notes: list[tuple[str, str]] = []
         self.families: dict[str, str] = {}
         self._exec_approved = self.options.allow_exec
+        self.private = (self.options.privacy or org.privacy) == "private"
         self._last_beat = 0.0
         for e in store.events(run_id, limit=100_000, kinds=("note", "agent.call")):
             if e["kind"] == "note":
@@ -172,7 +175,8 @@ class RunContext:
                           allow_downgrade=agent.allow_downgrade,
                           avoid_families=tuple(dict.fromkeys(f for f in avoid if f)),
                           pin=agent.model, max_tokens=agent.max_output_tokens,
-                          temperature=agent.temperature, label=agent.id)
+                          temperature=agent.temperature, label=agent.id,
+                          private=self.private)
         res = await self.router.chat(
             req, emit=lambda kind, data: self.emit(kind, agent=agent.id, step=step, **data))
         u = res.response.usage

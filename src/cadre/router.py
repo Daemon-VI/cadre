@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .clocks import DayClock
 from .providers import (
     AuthFailed,
     BadRequest,
@@ -49,6 +50,8 @@ class ModelEntry:
     priority: int = 100  # lower is preferred
     limits: Limits = field(default_factory=Limits)
     enabled: bool = True
+    trains: str = "unknown"   # does the provider's free tier train on prompts? (ADR-020)
+    day_reset: str = "UTC"    # the provider's daily clock (ADR-018)
 
     @property
     def key(self) -> str:
@@ -66,6 +69,7 @@ class CallRequest:
     max_tokens: int = 1500
     temperature: float = 0.3
     label: str = ""
+    private: bool = False  # only providers that do not train on prompts (ADR-020)
 
 
 @dataclass
@@ -107,14 +111,18 @@ class Router:
         self.disabled: dict[str, str] = {}  # provider id -> reason, for this session
 
     def quota(self, m: ModelEntry):
-        return self.quotas.get(m.key, m.limits)
+        return self.quotas.get(m.key, m.limits, DayClock(m.day_reset))
 
-    def usable(self) -> list[ModelEntry]:
+    def usable(self, private: bool = False) -> list[ModelEntry]:
         return [m for m in self.models
-                if m.enabled and m.provider in self.providers and m.provider not in self.disabled]
+                if m.enabled and m.provider in self.providers and m.provider not in self.disabled
+                and (not private or m.trains == "no")]
+
+    def excluded_for_privacy(self) -> list[ModelEntry]:
+        return [m for m in self.usable() if m.trains != "no"]
 
     def groups(self, req: CallRequest, exclude: set[str]) -> list[tuple[list[ModelEntry], bool]]:
-        pool = [m for m in self.usable() if m.key not in exclude]
+        pool = [m for m in self.usable(req.private) if m.key not in exclude]
         if req.pin:
             pool = [m for m in pool if req.pin in (m.key, m.name)]
             return [(pool, not req.avoid_families or all(
@@ -226,6 +234,9 @@ class Router:
             return "no models are configured — add a provider with `cadre provider add`"
         if req.pin and not any(req.pin in (m.key, m.name) for m in self.models):
             return f"pinned model {req.pin!r} is not configured"
+        if req.private and not self.usable(private=True):
+            names = ", ".join(f"{m.key} (trains: {m.trains})" for m in self.excluded_for_privacy())
+            return f"private run: no model whose provider does not train on prompts — excluded {names}"
         parts = [f"{p}: {why}" for p, why in self.disabled.items()]
         parts += fallbacks
         return "no usable model left" + (" — " + "; ".join(parts) if parts else "")

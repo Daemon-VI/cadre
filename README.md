@@ -142,25 +142,40 @@ Templates can use `{goal}`, `{prev}` and `{out.<step id>}`. Tools: `list_files`,
 `write_file`, `post_note`, `run_check`, `ask_human`. Everything is validated before the first
 model call, and errors name their path in the file.
 
-## Free providers (checked 2026-09-16)
+## Free providers (checked 2026-09-17)
 
-| Preset | Limits Cadre starts from | Source |
-|---|---|---|
-| `groq` | `openai/gpt-oss-120b`, `gpt-oss-20b`: 30 RPM, 1,000 RPD, 8,000 TPM, 200k TPD | provider docs |
-| `gemini` | `gemini-2.5-flash`: 10 RPM, 250 RPD (conservative; real limits are shown only in AI Studio) | guess |
-| `openrouter` | `:free` models, discovered: 20 RPM, 50/day (1,000/day once $10 credit was ever bought) | provider docs |
-| `mistral` | medium/small: 2 RPM; free plan requires opting in to training on your data | reported |
-| `cohere` | `command-a-03-2025`: 20 RPM, ~1,000 calls/month, non-commercial | reported |
-| `nvidia` | `meta/llama-3.3-70b-instruct`: 40 RPM | reported |
-| `cloudflare` | Llama 3.3 70B, gpt-oss-120b: 10,000 neurons/day; needs `--param account_id=…` | reported |
-| `zai` | `glm-4.5-flash` | guess |
-| `huggingface` | ~$0.10 credit/month | reported |
-| `ollama`, `llamacpp`, `lmstudio` | local, no key, no limits — slow on an 8 GB laptop | — |
-| `openai`, `anthropic`, `deepseek`, `custom` | paid, same adapter | — |
+Every free chat model a key reaches is its own quota bucket. Each provider also has its own
+daily clock and a recorded answer to "does the free tier train on my prompts?".
+
+| Preset | Models and limits Cadre starts from | Day resets | Trains on free prompts |
+|---|---|---|---|
+| `groq` | `openai/gpt-oss-120b`, `gpt-oss-20b`, `qwen/qwen3.8-27b`: 30 RPM, 1,000 RPD, 8,000 TPM, 200k TPD each (docs). Two model families on one key | rolling (no clock published; headers override) | no |
+| `gemini` | Ten chat models, each its own bucket: Gemini 3.8/3.7/3.6/3.5 Flash and 3 Flash preview, 2.5 Flash and 2.5 Pro, 3.5/3.1/2.5 Flash-Lite. Google publishes no per-model numbers; Flash 20 RPD and Flash-Lite 500 RPD are third-party reports, the rest are guesses | midnight Pacific (docs) | **yes** |
+| `openrouter` | `:free` models, discovered: 20 RPM, 50/day (1,000/day once 10 credits were ever bought) (docs) | UTC day (docs) | unknown — depends on the model's host |
+| `mistral` | medium/small: 2 RPM (reported) | not stated | **yes** unless you opt out |
+| `cohere` | `command-a-03-2025`: 20 RPM, 1,000 calls/month, non-commercial (docs) | not stated | yes unless you opt out |
+| `nvidia` | `meta/llama-3.3-70b-instruct`: 40 RPM (reported); trial credits | not stated | **yes** (trial terms) |
+| `cloudflare` | Llama 3.3 70B, gpt-oss-120b: 10,000 neurons/day, 300 RPM; needs `--param account_id=…` | 00:00 UTC (docs) | no |
+| `zai` | `glm-4.7-flash`, `glm-4.5-flash` (free per docs; limits guessed) | not stated | unknown |
+| `huggingface` | ~$0.10 credit/month | monthly | unknown — depends on the upstream provider |
+| `ollama`, `llamacpp`, `lmstudio` | local, no key, no limits — slow on an 8 GB laptop | — | no |
+| `deepseek`, `openai`, `anthropic`, `custom` | **paid**, opt-in, same adapter. DeepSeek has no free tier, and OpenRouter listed no free DeepSeek model on 2026-09-17 | — | — |
 
 Free catalogues change without notice: Cerebras became a card-required trial and GitHub Models
-was retired in July 2026. These numbers are only starting values — Cadre overrides them with the
-provider's own rate-limit headers, and every one can be changed with `cadre provider set-model`.
+was retired in July 2026. These numbers are only starting values. Cadre overrides them with each
+provider's own rate-limit headers, `cadre provider refresh` shows what each endpoint serves today
+(`--apply` adds new models and disables vanished ones, never touching limits you set), and any
+number can be changed with `cadre provider set-model`. Cadre keeps 10% of every daily cap unused
+(`reserve_pct`) for other programs that share the key.
+
+Use **one account per provider.** Capacity grows by adding *different* providers; several
+accounts or projects at one provider to multiply a free limit breaks their terms.
+
+### Private runs
+
+`cadre run … --private` (or `privacy: private` in the org file) only uses providers that say they
+do not train on prompts — today Groq, Cloudflare and local models. The run records which models it
+excluded, and fails before its first call if none are left.
 
 ## Safety
 

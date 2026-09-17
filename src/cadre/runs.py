@@ -51,7 +51,7 @@ class RunManager:
         self.quotas = QuotaBook(on_change=self.store.quota_save, loader=self.store.quota_load)
         self._router = router
         self._demo: Router | None = None
-        self._transport = transport
+        self.transport = transport
         self.warnings: list[str] = []
         self.tasks: dict[str, asyncio.Task[Any]] = {}
         self._shutting_down = False
@@ -65,7 +65,7 @@ class RunManager:
             return self._demo
         if self._router is None:
             self._router, self.warnings = build_router(
-                self.home.load_config(), self.secrets, self.quotas, transport=self._transport)
+                self.home.load_config(), self.secrets, self.quotas, transport=self.transport)
         return self._router
 
     def load_keys(self) -> None:
@@ -106,7 +106,8 @@ class RunManager:
         store = self.store
         opts = run["options"] or {}
         options = RunOptions(allow_exec=bool(opts.get("allow_exec")),
-                             auto_approve=bool(opts.get("auto_approve")))
+                             auto_approve=bool(opts.get("auto_approve")),
+                             privacy=opts.get("privacy"))
         resumed = bool(store.step_paths(run_id))
         store.update_run(run_id, status="running", error=None, finished=None)
         store.heartbeat(run_id)
@@ -119,9 +120,20 @@ class RunManager:
                                  "or try the offline demo with --demo")
             ctx = RunContext(run_id, org, run["goal"], store, router,
                              self.home.runs_dir / run_id, options, approver)
+            store.update_run(run_id, privacy="private" if ctx.private else "standard")
             ctx.emit("run.started", org=org.name, goal=run["goal"], resumed=resumed,
-                     models=[m.key for m in router.usable()], warnings=self.warnings,
-                     workspace=str(ctx.workspace.root))
+                     models=[m.key for m in router.usable(ctx.private)], warnings=self.warnings,
+                     workspace=str(ctx.workspace.root), private=ctx.private)
+            if ctx.private:
+                excluded = router.excluded_for_privacy()
+                if excluded:
+                    ctx.emit("privacy.excluded", models=[
+                        {"model": m.key, "trains_on_free_data": m.trains} for m in excluded])
+                if not router.usable(private=True):
+                    raise StepFailed(
+                        "private run: every configured provider trains on prompts or does not say "
+                        "(" + ", ".join(sorted({m.provider for m in excluded})) + "). Add Groq or "
+                        "Cloudflare, or run without --private")
             out = await Engine(ctx).run()
         except RunStopped as e:
             return self._finish(run_id, "stopped", error=str(e))

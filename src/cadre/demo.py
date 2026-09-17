@@ -129,10 +129,10 @@ def demo_providers() -> tuple[dict[str, ScriptedProvider], list[ModelEntry]]:
     }
     models = [
         ModelEntry("demo-a", "alpha-large", tier="strong", family="alpha", priority=10,
-                   limits=Limits(rpm=600)),
+                   limits=Limits(rpm=600), trains="no"),
         ModelEntry("demo-b", "beta-large", tier="strong", family="beta", priority=20,
-                   limits=Limits(rpm=600)),
+                   limits=Limits(rpm=600), trains="no"),
         ModelEntry("demo-a", "alpha-small", tier="fast", family="alpha", priority=30,
-                   limits=Limits(rpm=600)),
+                   limits=Limits(rpm=600), trains="no"),
     ]
     return providers, models

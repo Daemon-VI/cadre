@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS files(
     PRIMARY KEY(run_id, path, version));
 """
 
+#: v1.0 columns added to v0.1's `runs` table (ADR-016, 017, 020); all nullable or defaulted
+RUN_COLUMNS = {"project_path": "TEXT", "base": "TEXT", "branch": "TEXT", "resume_at": "REAL",
+               "active_seconds": "REAL DEFAULT 0", "privacy": "TEXT"}
+SCHEMA_VERSION = 2
+
 ACTIVE = ("queued", "running", "waiting")
 STALE_AFTER = 90.0  # seconds without a heartbeat before an active run counts as interrupted
 
@@ -67,6 +72,22 @@ class Store:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute("PRAGMA busy_timeout=30000")
             self._db.executescript(SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Bring a v0.1 database (user_version 0) up to date without touching its rows."""
+        version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        cols = {r[1] for r in self._db.execute("PRAGMA table_info(runs)")}
+        for name, decl in RUN_COLUMNS.items():
+            if name not in cols:
+                self._db.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")
+        if version < SCHEMA_VERSION:
+            self._db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+
+    @property
+    def version(self) -> int:
+        with self._lock:
+            return self._db.execute("PRAGMA user_version").fetchone()[0]
 
     def close(self) -> None:
         with self._lock:

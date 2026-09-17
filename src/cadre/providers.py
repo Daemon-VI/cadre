@@ -407,7 +407,9 @@ class OpenAICompatProvider(LLMProvider):
             raise classify(r, self.label)
         data = r.json()
         items = data.get("data") if isinstance(data, dict) else data
-        return sorted({str(m.get("id")) for m in items or [] if isinstance(m, dict) and m.get("id")})
+        # Google's compatibility layer lists ids as "models/<id>" but accepts the bare id in chat
+        return sorted({str(m.get("id")).removeprefix("models/") for m in items or []
+                       if isinstance(m, dict) and m.get("id")})
 
 
 def _as_dict(v: Any) -> dict[str, Any]:
