@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import webbrowser
@@ -53,9 +54,12 @@ app = typer.Typer(help="Cadre — run an organisation of AI agents on free model
 provider_app = typer.Typer(help="Model providers and their keys.", no_args_is_help=True)
 runs_app = typer.Typer(help="Recent runs, and cleanup of finished project worktrees.")
 org_app = typer.Typer(help="Organisation files.", no_args_is_help=True)
+scheduler_app = typer.Typer(help="Resume parked runs on a schedule (asks before installing).",
+                            no_args_is_help=True)
 app.add_typer(provider_app, name="provider")
 app.add_typer(org_app, name="org")
 app.add_typer(runs_app, name="runs")
+app.add_typer(scheduler_app, name="scheduler")
 con = Console(highlight=False)
 
 
@@ -585,8 +589,13 @@ def _report(h: Home, run: dict[str, Any]) -> None:
         con.print("[dim]Cadre never merges or pushes; the branch is yours to review.[/]")
     elif p:
         con.print(f"[yellow]{p['error']}[/]")
-    if run["status"] in ("interrupted", "failed", "stopped", "cancelled", "unapproved"):
-        con.print(f"Resume with: cadre resume {run['id']}")
+    if run["status"] == "parked":
+        con.print(f"[yellow]Parked until about {ist(run['resume_at'])}[/] — daily limits. "
+                  "`cadre serve` resumes it automatically, or run `cadre resume --due` after that "
+                  "(`cadre scheduler install` can do this on a schedule).")
+    elif run["status"] in ("interrupted", "failed", "stopped", "cancelled", "unapproved"):
+        hint = " --add-calls 20" if run["status"] == "stopped" and "call budget" in (run.get("error") or "") else ""
+        con.print(f"Resume with: cadre resume {run['id']}{hint}")
 
 
 @app.command()
@@ -632,23 +641,46 @@ def run(
         con.print(result["result"], markup=False)
         con.rule()
     _report(h, result)
-    raise typer.Exit(0 if result["status"] == "succeeded" else 1)
+    raise typer.Exit(0 if result["status"] in ("succeeded", "parked") else 1)
 
 
 @app.command()
-def resume(run_id: str,
+def resume(run_id: str | None = typer.Argument(None, help="the run to continue"),
+           due: bool = typer.Option(False, "--due", help="resume every parked run whose reset has passed"),
+           add_calls: int = typer.Option(0, "--add-calls", help="raise the run's model-call budget"),
+           add_tokens: int = typer.Option(0, "--add-tokens", help="raise the run's token budget"),
            quiet: bool = typer.Option(False, "--quiet", "-q"),
            wait_elsewhere: bool = typer.Option(False, "--approve-elsewhere")) -> None:
-    """Continue an interrupted, failed, stopped or unapproved run. Finished steps are reused."""
+    """Continue an interrupted, failed, stopped, unapproved or parked run. Finished steps are reused
+    and not billed again; budgets count everything the run has already used."""
     h = home()
     manager = RunManager(h)
     manager.store.mark_stale_interrupted()
+    if due:
+        ids = manager.due()
+        if not ids:
+            parked = manager.store.parked()
+            con.print("No parked run is due." + (f" Next: {parked[0]['id']} at {ist(parked[0]['resume_at'])}"
+                                                 if parked else ""))
+            return
+        worst = 0
+        for rid in ids:
+            con.print(f"Resuming parked run {rid}")
+            result = _execute(RunManager(h), rid, quiet, True)
+            _report(h, result)
+            worst = max(worst, 0 if result["status"] in ("succeeded", "parked") else 1)
+        raise typer.Exit(worst)
+    if not run_id:
+        fail("give a run id, or --due")
     if not manager.resumable(run_id):
         r = manager.store.get_run(run_id)
         fail(f"run {run_id} is {r['status'] if r else 'unknown'} and cannot be resumed")
+    if add_calls or add_tokens:
+        manager.add_allowance(run_id, add_calls, add_tokens)
+        con.print(f"Budget raised by {add_calls} calls and {add_tokens} tokens.")
     result = _execute(manager, run_id, quiet, wait_elsewhere)
     _report(h, result)
-    raise typer.Exit(0 if result["status"] == "succeeded" else 1)
+    raise typer.Exit(0 if result["status"] in ("succeeded", "parked") else 1)
 
 
 @runs_app.callback(invoke_without_command=True)
@@ -755,6 +787,44 @@ def approve(approval_id: str, reject: bool = typer.Option(False, "--reject"),
     if not store.decide(approval_id, not reject, answer):
         fail("no pending approval with that id")
     con.print("rejected" if reject else "approved")
+
+
+@scheduler_app.command("install")
+def scheduler_install(every: int = typer.Option(30, "--every", help="minutes between checks"),
+                      yes: bool = typer.Option(False, "--yes", "-y")) -> None:
+    """Register a Windows Task Scheduler job that runs `cadre resume --due`."""
+    from . import scheduler
+
+    args = scheduler.install_args(every)
+    con.print("This will register a scheduled task on this machine:", markup=False)
+    con.print("  " + subprocess.list2cmdline(args), markup=False)
+    if not yes and not typer.confirm("Install it?", default=False):
+        con.print("Not installed.")
+        raise typer.Exit(1)
+    ok, out = scheduler.run(args)
+    con.print(out, markup=False)
+    raise typer.Exit(0 if ok else 1)
+
+
+@scheduler_app.command("uninstall")
+def scheduler_uninstall() -> None:
+    """Remove the scheduled task."""
+    from . import scheduler
+
+    ok, out = scheduler.run(scheduler.uninstall_args())
+    con.print(out, markup=False)
+    raise typer.Exit(0 if ok else 1)
+
+
+@scheduler_app.command("status")
+def scheduler_status() -> None:
+    """Show whether the scheduled task exists, and which parked runs are waiting."""
+    from . import scheduler
+
+    ok, out = scheduler.run(scheduler.status_args())
+    con.print(out if ok else "The scheduled task is not installed.", markup=False)
+    for r in Store(home().db_path).parked():
+        con.print(f"parked: {r['id']} ({r['org']}) resumes ~{ist(r['resume_at'])}", markup=False)
 
 
 # ------------------------------------------------------------------ server

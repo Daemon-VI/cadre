@@ -66,6 +66,10 @@ class Budget(_Strict):
     max_tokens: int = Field(300_000, ge=1000)
     max_minutes: float = Field(30, gt=0)
     max_parallel: int = Field(2, ge=1, le=16)
+    #: a run older than this many days stops (ADR-017)
+    max_days: float | None = Field(7, gt=0)
+    #: tokens a run may spend per UTC day; reaching it parks the run until the next day
+    max_tokens_per_day: int | None = Field(None, ge=100)
 
 
 class _Step(_Strict):

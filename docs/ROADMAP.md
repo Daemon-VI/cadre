@@ -30,8 +30,8 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M7** | Usage ledger and forecast | G6 · FR-11 | done 2026-09-17 (offline; estimates to be checked against M5) |
 | **M8** | Code-editing tools and repo map | G7 · FR-13 | done 2026-09-17 (offline) |
 | **M9** | Project mode | G2 · FR-8 | done 2026-09-17 (offline, git fixtures) |
-| **M10** | Multi-day runs | G4 · FR-9 | next |
-| **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | planned |
+| **M10** | Multi-day runs | G4 · FR-9 | done 2026-09-17 (offline, fake clock; scheduler not installed) |
+| **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | blocked with M5 (needs live keys) |
 | M12 | Container runner for checks | — | after v1.0 |
 | M13 | Multi-user organisations | — | after v1.0 |
 | M14 | Memory across runs | — | after v1.0 |

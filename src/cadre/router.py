@@ -34,7 +34,7 @@ from .providers import (
     Unavailable,
     estimate_tokens,
 )
-from .quota import Limits, QuotaBook
+from .quota import DAILY, NEVER, Block, Limits, QuotaBook
 from .types import ChatResponse, Message, ToolSpec
 
 Emit = Callable[[str, dict[str, Any]], None]
@@ -83,6 +83,20 @@ class CallResult:
 
 class NoModelAvailable(ProviderError):
     pass
+
+
+class QuotaParked(Exception):  # noqa: N818 — a state, not an error (deliberately not a ProviderError)
+    """Every eligible model is blocked by a *daily* limit beyond `max_wait` (ADR-017).
+
+    Not a ProviderError on purpose: task-level handlers that turn provider failures into failed
+    tasks must let this through, so the whole run parks instead.
+    """
+
+    def __init__(self, resume_in: float, blocks: list[dict[str, Any]]):
+        self.resume_in = resume_in
+        self.blocks = blocks
+        super().__init__("daily limits reached — " + "; ".join(
+            f"{b['model']}: {b['why']} (frees in {b['frees_in']})" for b in blocks))
 
 
 def _human(seconds: float) -> str:
@@ -155,22 +169,28 @@ class Router:
             if not groups:
                 raise NoModelAvailable(self._nothing_left(req, fallbacks))
             choice = None
-            blocked: list[str] = []
+            blocked: dict[str, Block] = {}
             for group, independent in groups:
                 ranked = []
                 for m in group:
-                    wait, why = self.quota(m).wait_time(est)
-                    if wait > self.max_wait:
-                        blocked.append(f"{m.key}: {why} (frees in {_human(wait)})")
+                    b = self.quota(m).block(est)
+                    if b.wait > self.max_wait:
+                        blocked[m.key] = b
                         continue
-                    ranked.append((wait, m.priority, -self.quota(m).headroom(), m.key, m, why))
+                    ranked.append((b.wait, m.priority, -self.quota(m).headroom(), m.key, m, b.why))
                 if ranked:
                     ranked.sort(key=lambda r: r[:4])
                     choice = (ranked[0][0], ranked[0][4], independent, ranked[0][5])
                     break
             if choice is None:
+                finite = {k: b for k, b in blocked.items() if b.kind != NEVER}
+                if finite and min(finite.values(), key=lambda b: b.wait).kind == DAILY:
+                    daily = {k: b for k, b in finite.items() if b.kind == DAILY}
+                    raise QuotaParked(min(b.wait for b in daily.values()), [
+                        {"model": k, "why": b.why, "frees_in": _human(b.wait), "seconds": round(b.wait)}
+                        for k, b in sorted(daily.items(), key=lambda kv: kv[1].wait)])
                 raise NoModelAvailable("no model can take this call now — " + "; ".join(
-                    dict.fromkeys(blocked)))
+                    f"{k}: {b.why} (frees in {_human(b.wait)})" for k, b in blocked.items()))
             wait, m, independent, why = choice
             if wait > 0:
                 emit("route.wait", {"model": m.key, "seconds": round(wait, 1), "reason": why})

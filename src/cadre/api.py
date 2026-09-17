@@ -37,7 +37,7 @@ from .forecast import estimate, forecast, usage_ledger
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
 from .providers import ProviderError
-from .runs import TERMINAL, RunManager
+from .runs import STREAM_END, RunManager
 from .store import ACTIVE
 from .workspace import Workspace, WorkspaceError
 
@@ -99,14 +99,28 @@ def _host_ok(host: str | None, extra: set[str]) -> bool:
 
 
 def create_app(manager: RunManager, *, token: str | None = None,
-               allowed_hosts: set[str] | None = None) -> FastAPI:
+               allowed_hosts: set[str] | None = None, resume_every: float | None = 60.0) -> FastAPI:
     token = token or manager.home.token()
     extra_hosts = allowed_hosts or set()
+
+    async def resumer() -> None:
+        """Parked runs come back on their own while the server is up (ADR-017)."""
+        while True:
+            await asyncio.sleep(resume_every or 60.0)
+            try:
+                for rid in manager.due():
+                    if rid not in manager.tasks:
+                        manager.start(rid)
+            except Exception:  # never let the loop die
+                pass
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         manager.store.mark_stale_interrupted()
+        loop_task = asyncio.create_task(resumer()) if resume_every else None
         yield
+        if loop_task:
+            loop_task.cancel()
         await manager.shutdown()
 
     app = FastAPI(title="Cadre", version=__version__, docs_url=None, redoc_url=None,
@@ -419,7 +433,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
                     idle = 0.0
                     continue
                 status = (store.get_run(rid) or {}).get("status")
-                if status in TERMINAL:
+                if status in STREAM_END:
                     yield f"event: end\ndata: {json.dumps({'status': status})}\n\n"
                     return
                 await asyncio.sleep(0.5)

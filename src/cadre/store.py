@@ -149,6 +149,20 @@ class Store:
             r.update(self.usage_totals(r["id"]))
         return rows
 
+    def tokens_since(self, rid: str, since: float) -> int:
+        row = self._one("SELECT COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS t FROM usage "
+                        "WHERE run_id=? AND ts>=?", (rid, since))
+        return int(row["t"]) if row else 0
+
+    def due_parked(self, now: float) -> list[str]:
+        rows = self._all("SELECT id FROM runs WHERE status='parked' AND resume_at IS NOT NULL "
+                         "AND resume_at<=? ORDER BY resume_at", (now,))
+        return [r["id"] for r in rows]
+
+    def parked(self) -> list[dict[str, Any]]:
+        return self._all("SELECT id, org, goal, resume_at, error FROM runs WHERE status='parked' "
+                         "ORDER BY resume_at")
+
     def project_runs(self) -> list[dict[str, Any]]:
         return self._all("SELECT id, org, status, project_path, branch, base, created FROM runs "
                          "WHERE project_path IS NOT NULL ORDER BY created")

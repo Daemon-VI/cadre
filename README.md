@@ -114,6 +114,22 @@ estimated from template size` before that. `cadre run` prints it before starting
 ledger shows requests, tokens and the share of each daily cap per day, provider and model, with
 the next reset in IST.
 
+## Long jobs: parking and resuming
+
+When every model a run can use has hit its *daily* limit, the run is **parked** instead of
+failing, with the time it can continue (each provider's own reset clock). Nothing already finished
+is repeated or billed again when it resumes.
+
+```bash
+uv run cadre serve                 # resumes parked runs by itself while it is running
+uv run cadre resume --due          # or resume every run whose reset has passed, once
+uv run cadre scheduler install     # or let Windows Task Scheduler do that every 30 minutes (asks first)
+```
+
+Budgets count everything a run has used across days. `max_days` (default 7) stops a run that has
+gone on too long; `max_tokens_per_day` spreads a job over several days; `cadre resume <id>
+--add-calls 20` raises a stopped run's allowance.
+
 ## Dashboard
 
 ```bash

@@ -26,6 +26,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .agent import AgentResult, ask_json, run_agent, schema_text
+from .clocks import DayClock, human
 from .org import (
     AgentSpec,
     ApprovalStep,
@@ -40,7 +41,7 @@ from .org import (
 )
 from .project import PROTECTED, ProjectError, commit_all
 from .providers import ProviderError
-from .router import CallRequest, CallResult, Router
+from .router import CallRequest, CallResult, QuotaParked, Router
 from .store import Store
 from .tools import TOOLS, CheckResult, run_check_process
 from .types import Message, ToolSpec, Usage
@@ -80,10 +81,23 @@ Approver = Callable[[str, str, str | None], Awaitable[tuple[bool, str]]]
 
 
 class BudgetMeter:
-    def __init__(self, budget: Budget, clock: Callable[[], float] = time.monotonic):
+    """Run budgets. Cumulative across parks and resumes (ADR-017): counts start from what the run
+    has already used, plus any allowance the owner added with `cadre resume --add-…`."""
+
+    def __init__(self, budget: Budget, clock: Callable[[], float] = time.monotonic, *,
+                 calls: int = 0, tokens: int = 0, active_seconds: float = 0.0,
+                 extra_calls: int = 0, extra_tokens: int = 0, created: float | None = None,
+                 wall: Callable[[], float] = time.time,
+                 tokens_today: Callable[[], int] | None = None):
         self.budget = budget
-        self.calls = 0
-        self.tokens = 0
+        self.calls = calls
+        self.tokens = tokens
+        self.max_calls = budget.max_calls + extra_calls
+        self.max_tokens = budget.max_tokens + extra_tokens
+        self._before = active_seconds
+        self._created = created
+        self._wall = wall
+        self._tokens_today = tokens_today
         self._clock = clock
         self._start = clock()
         self._paused_at: float | None = None
@@ -92,7 +106,7 @@ class BudgetMeter:
     @property
     def minutes(self) -> float:
         now = self._paused_at if self._paused_at is not None else self._clock()
-        return (now - self._start - self._paused_total) / 60
+        return (self._before + now - self._start - self._paused_total) / 60
 
     def pause(self) -> None:
         if self._paused_at is None:
@@ -105,12 +119,23 @@ class BudgetMeter:
 
     def check(self) -> None:
         b = self.budget
-        if self.calls >= b.max_calls:
-            raise RunStopped(f"model-call budget reached ({self.calls}/{b.max_calls} calls)")
-        if self.tokens >= b.max_tokens:
-            raise RunStopped(f"token budget reached ({self.tokens}/{b.max_tokens} tokens)")
+        if self.calls >= self.max_calls:
+            raise RunStopped(f"model-call budget reached ({self.calls}/{self.max_calls} calls)")
+        if self.tokens >= self.max_tokens:
+            raise RunStopped(f"token budget reached ({self.tokens}/{self.max_tokens} tokens)")
         if self.minutes >= b.max_minutes:
-            raise RunStopped(f"time budget reached ({self.minutes:.1f}/{b.max_minutes} minutes)")
+            raise RunStopped(f"time budget reached ({self.minutes:.1f}/{b.max_minutes} active minutes)")
+        if b.max_days and self._created is not None:
+            days = (self._wall() - self._created) / 86400
+            if days >= b.max_days:
+                raise RunStopped(f"day budget reached ({days:.1f}/{b.max_days:g} days since the run began)")
+        if b.max_tokens_per_day and self._tokens_today is not None:
+            used = self._tokens_today()
+            if used >= b.max_tokens_per_day:
+                wait = DayClock("UTC").seconds_until_reset(self._wall())
+                raise QuotaParked(wait, [{"model": "run budget", "seconds": round(wait),
+                                          "why": f"max_tokens_per_day reached ({used}/{b.max_tokens_per_day})",
+                                          "frees_in": human(wait)}])
 
     def charge(self, usage: Usage) -> None:
         self.calls += 1
@@ -134,7 +159,14 @@ class RunContext:
         self.workspace = Workspace(
             run_dir, on_write=lambda p, v, sha, n, a: store.add_file(run_id, p, v, sha, n, a),
             protected=PROTECTED if project else ())
-        self.budget = BudgetMeter(org.budget)
+        row = store.get_run(run_id) or {}
+        totals = store.usage_totals(run_id)
+        extra = (row.get("options") or {}).get("budget_extra") or {}
+        self.budget = BudgetMeter(
+            org.budget, calls=totals["calls"], tokens=totals["prompt_tokens"] + totals["completion_tokens"],
+            active_seconds=row.get("active_seconds") or 0.0, extra_calls=int(extra.get("calls", 0)),
+            extra_tokens=int(extra.get("tokens", 0)), created=row.get("created"),
+            tokens_today=lambda: store.tokens_since(run_id, DayClock("UTC").bucket_start(time.time())))
         self.outputs: dict[str, str] = {}
         self.prev = ""
         self.notes: list[tuple[str, str]] = []

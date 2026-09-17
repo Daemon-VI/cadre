@@ -17,7 +17,7 @@ Every test runs with `CADRE_NO_KEYRING=1` and a temporary `CADRE_HOME`, so the s
 the real credential store or `~/.cadre`.
 
 ```bash
-uv run pytest -q          # 142 passed, 1 skipped, ~22 s on the i3-1215U (2026-09-17, after M9)
+uv run pytest -q          # 150 passed, 1 skipped, ~25 s on the i3-1215U (2026-09-17, after M10)
 uv run ruff check src tests
 ```
 
@@ -81,10 +81,16 @@ the `..` tests exercise.
 | FR-8 AC-8.5 repo checks from base, `.cadre/` protected | `test_project::test_repo_checks_come_from_the_base_commit`, `…agents_cannot_write_cadre_dir` | M9 ✅ |
 | FR-8 AC-8.7 resume on same branch | `test_project::test_resumed_project_run_keeps_its_branch` | M9 ✅ |
 | NFR-10 owner's tree untouched | `test_project::test_run_commits_on_its_own_branch_and_leaves_the_owner_alone` (HEAD, branch, porcelain compared) | M9 ✅ |
-| FR-9 AC-9.1–9.2 park and resume | `test_multiday::test_daily_limit_parks_then_resumes_without_rebilling`, `…minute_limits_still_wait` | M10 |
-| FR-9 AC-9.3 cumulative budgets | `test_multiday::test_budgets_accumulate_across_resumes`, `…max_days_stops_the_run` | M10 |
+| FR-9 AC-9.1–9.2 park and resume | `test_multiday::test_daily_limit_parks_then_resumes_without_rebilling`, `…minute_limits_still_wait`, `…serve_resumes_due_parked_runs`, `…scheduler_command_is_shown_not_run`, `test_router::test_exhausted_quota_parks_with_a_reason_that_names_the_model`, `…a_long_minute_block_still_fails_instead_of_parking` | M10 ✅ |
+| FR-9 AC-9.3 cumulative budgets | `test_multiday::test_budgets_accumulate_across_resumes`, `…max_days_stops_the_run`, `…max_tokens_per_day_parks_until_tomorrow` | M10 ✅ |
 | NFR-11 honest forecasts | `test_forecast::test_no_history_is_labelled_estimated`, `…measured_history_uses_median_and_p90` | M7 ✅ |
 | Migration of a v0.1 database | `test_migration::test_v01_database_opens_and_keeps_rows` | M6 ✅ |
+
+## Changed expectations
+
+- 2026-09-17 (M10, ADR-017): `test_router::test_exhausted_quota_fails_with_a_reason_that_names_the_model`
+  became `…parks_with_a_reason_that_names_the_model` — a daily block now parks the run. Its intent
+  (the message names the model and the reason) is unchanged.
 
 ## Defects found by the suite (2026-09-16)
 

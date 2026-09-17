@@ -183,6 +183,14 @@ until the reset* — the laptop sleeps, the process dies, and the run holds memo
 *Failing and asking the owner to resume* — that is v0.1, and it is gap G4.
 **Proof.** `tests/test_multiday.py` with a fake clock: limit hit → parked → clock passes the reset
 → resumed → finished, and the provider's call count shows no step billed twice.
+**As built (2026-09-17).** `QuotaParked` is deliberately *not* a `ProviderError`, so a manager
+task cannot swallow it as a task failure. A park happens when the soonest block among eligible
+models is `daily`; a long minute block still fails (`max_wait` below 60 s). `max_tokens_per_day`
+parks until the next UTC day rather than stopping. Groq's request headers describe its daily
+window, so a spent request window longer than five minutes counts as `daily`. `cadre serve`
+checks for due parked runs every 60 s; `cadre scheduler install` (Windows Task Scheduler, every
+30 min) shows the exact `schtasks` command and asks before creating it — it has **not** been
+installed on Rithik's machine.
 
 ### ADR-018 — Each provider keeps its own daily clock (FR-10)
 **Context.** v0.1 counted every day in UTC. Google: RPD quotas "reset at midnight Pacific time";

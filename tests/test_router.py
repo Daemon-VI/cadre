@@ -2,7 +2,7 @@ import pytest
 
 from cadre.providers import AuthFailed, RateLimited, RequestTooLarge, ScriptedProvider, ToolsUnsupported
 from cadre.quota import Limits, QuotaBook
-from cadre.router import CallRequest, ModelEntry, NoModelAvailable, Router
+from cadre.router import CallRequest, ModelEntry, NoModelAvailable, QuotaParked, Router
 from cadre.types import Message, ToolSpec
 
 MSG = [Message(role="user", content="hello")]
@@ -89,14 +89,25 @@ async def test_waits_for_the_only_model_when_it_frees_soon():
     assert slept and slept[0] == pytest.approx(40, abs=0.1)
 
 
-async def test_exhausted_quota_fails_with_a_reason_that_names_the_model():
+async def test_exhausted_quota_parks_with_a_reason_that_names_the_model():
+    # v0.1 failed here with NoModelAvailable; since ADR-017 a daily block parks the run instead
     a = ScriptedProvider("a", lambda *_: "ok")
     models = [ModelEntry("a", "m", tier="strong", family="x", limits=Limits(rpd=1))]
     r = Router({"a": a}, models)
     await r.chat(CallRequest(MSG))
-    with pytest.raises(NoModelAvailable) as info:
+    with pytest.raises(QuotaParked) as info:
         await r.chat(CallRequest(MSG))
     assert "a/m" in str(info.value) and "daily limit" in str(info.value)
+    assert info.value.blocks[0]["model"] == "a/m" and info.value.resume_in > 0
+
+
+async def test_a_long_minute_block_still_fails_instead_of_parking():
+    a = ScriptedProvider("a", lambda *_: "ok")
+    models = [ModelEntry("a", "m", tier="strong", family="x", limits=Limits(rpm=1))]
+    r = Router({"a": a}, models, max_wait=10)  # a 60 s minute window is longer than max_wait
+    await r.chat(CallRequest(MSG))
+    with pytest.raises(NoModelAvailable, match="requests/min"):
+        await r.chat(CallRequest(MSG))
 
 
 async def test_no_downgrade_when_the_agent_forbids_it():

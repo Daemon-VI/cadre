@@ -59,7 +59,7 @@ function duration(a, b) {
 }
 const STATUS_CLASS = {
   succeeded: "good", running: "live", waiting: "warn", queued: "live", cancelling: "warn",
-  unapproved: "warn", stopped: "warn", interrupted: "warn",
+  unapproved: "warn", stopped: "warn", interrupted: "warn", parked: "warn",
   failed: "bad", rejected: "bad", cancelled: "",
 };
 const pill = (status) => h("span", { class: `pill ${STATUS_CLASS[status] ?? ""}`, text: status });
@@ -158,6 +158,12 @@ function describe(e) {
   switch (e.kind) {
     case "run.started": return [`started ${d.org}${d.resumed ? " (resumed)" : ""} · models: ${(d.models || []).join(", ")}`, ""];
     case "run.finished": return [`finished: ${d.status}${d.error ? " — " + d.error : ""}`, d.status === "succeeded" ? "" : "warn"];
+    case "run.parked": return [h("div", {}, `parked until ${d.resume_at_ist} — daily limits:`,
+      h("ul", {}, ...(d.blocks || []).map((b) => h("li", { text: `${b.model}: ${b.why} (frees in ${b.frees_in})` })))), "warn"];
+    case "project.worktree": return [`worktree ${d.how} on ${d.branch} from ${d.base}`, "quiet"];
+    case "project.commit": return [`committed ${d.sha}: ${d.message}`, ""];
+    case "project.commit_failed": return [`commit failed: ${d.error}`, "bad"];
+    case "privacy.excluded": return [`private run — excluded ${(d.models || []).map((m) => m.model).join(", ")}`, "quiet"];
     case "run.crashed": return [h("details", {}, h("summary", { text: "internal error — trace" }), h("pre", { text: d.trace })), "bad"];
     case "step.started": return [`${d.type} step ${d.title ? "“" + d.title + "”" : ""} started`, "quiet"];
     case "step.finished": return [`${d.type} step finished${d.approved === false ? " — NOT approved" : d.approved ? " — approved" : ""}`, d.approved === false ? "warn" : "quiet"];
@@ -282,7 +288,7 @@ function viewRun(rid) {
     const actions = h("div", { class: "row" });
     if (ACTIVE.has(r.status)) actions.append(h("button", { class: "danger", onclick: async () => {
       await api(`/api/runs/${rid}/cancel`, { method: "POST" }); toast("Cancelling…"); } }, "Cancel run"));
-    if (["interrupted", "failed", "stopped", "cancelled", "unapproved"].includes(r.status)) actions.append(h("button", { onclick: async () => {
+    if (["interrupted", "failed", "stopped", "cancelled", "unapproved", "parked"].includes(r.status)) actions.append(h("button", { onclick: async () => {
       try { await api(`/api/runs/${rid}/resume`, { method: "POST" }); toast("Resumed — finished steps are reused, not re-billed."); follow(); }
       catch (err) { toast(err.message); } } }, "Resume"));
     head.replaceChildren(h("div", { class: "row spread" },
@@ -290,6 +296,8 @@ function viewRun(rid) {
         h("h1", {}, r.org, " ", pill(r.status), r.options && r.options.demo ? h("span", { class: "pill", text: "demo" }) : null),
         h("p", { class: "sub", text: r.goal })),
       actions),
+      r.status === "parked" && r.resume_at
+        ? h("div", { class: "callout info", text: `Parked on daily limits. It resumes by itself around ${when(r.resume_at)} while the server runs.` }) : null,
       r.error ? h("div", { class: "callout", text: r.error }) : null,
       r.summary && r.summary.unapproved && r.summary.unapproved.length
         ? h("div", { class: "callout", text: `Finished, but not everything was approved: ${r.summary.unapproved.join(", ")}. Open the Timeline to see the open issues.` }) : null);

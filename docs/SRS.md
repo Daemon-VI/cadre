@@ -159,8 +159,9 @@ review; the owner's tree and branches are never modified.
   model and its reset time. Minute-window waits still wait; auth failures still fail.
 - **AC-9.2** A parked run that is due is resumed by `cadre resume --due` or by `cadre serve`;
   finished steps are neither repeated nor re-billed.
-- **AC-9.3** Budgets are cumulative across parks and resumes; `max_days` and
-  `max_tokens_per_day` stop a run by name.
+- **AC-9.3** Budgets are cumulative across parks and resumes; `max_days` stops a run by name,
+  and `max_tokens_per_day` parks it until the next UTC day (changed 2026-09-17 during M10: a
+  per-day cap that stopped the run would defeat a multi-day run).
 
 ### FR-10 Provider catalogue
 - **AC-10.1** Every free chat model a key can reach is its own quota bucket with its own

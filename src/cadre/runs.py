@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 import traceback
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 
+from .clocks import ist
 from .config import Home, build_router
 from .demo import demo_providers
 from .engine import (
@@ -41,20 +44,24 @@ from .project import (
 )
 from .providers import ProviderError
 from .quota import QuotaBook
-from .router import Router
+from .router import QuotaParked, Router
 from .secrets import SecretStore
 from .store import ACTIVE, Store
 
 log = logging.getLogger(__name__)
 
 TERMINAL = ("succeeded", "unapproved", "failed", "stopped", "rejected", "cancelled", "interrupted")
-RESUMABLE = ("interrupted", "failed", "stopped", "cancelled", "unapproved")
+RESUMABLE = ("interrupted", "failed", "stopped", "cancelled", "unapproved", "parked")
+#: when a live event stream should end: the run is not going to produce more events by itself
+STREAM_END = (*TERMINAL, "parked")
+PARK_JITTER = (30.0, 120.0)
 
 
 class RunManager:
     def __init__(self, home: Home, store: Store | None = None, *,
                  secrets: SecretStore | None = None, router: Router | None = None,
-                 transport: httpx.AsyncBaseTransport | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None,
+                 wall: Callable[[], float] = time.time):
         self.home = home.ensure()
         self.store = store or Store(home.db_path)
         self.secrets = secrets or SecretStore()
@@ -62,6 +69,7 @@ class RunManager:
         self._router = router
         self._demo: Router | None = None
         self.transport = transport
+        self.wall = wall
         self.warnings: list[str] = []
         self.tasks: dict[str, asyncio.Task[Any]] = {}
         self._shutting_down = False
@@ -134,7 +142,7 @@ class RunManager:
                              privacy=opts.get("privacy"))
         resumed = bool(store.step_paths(run_id))
         self._started[run_id] = time.monotonic()
-        store.update_run(run_id, status="running", error=None, finished=None)
+        store.update_run(run_id, status="running", error=None, finished=None, resume_at=None)
         store.heartbeat(run_id)
         try:
             org = load_org_text(run["org_yaml"])
@@ -163,6 +171,8 @@ class RunManager:
                         "(" + ", ".join(sorted({m.provider for m in excluded})) + "). Add Groq or "
                         "Cloudflare, or run without --private")
             out = await Engine(ctx).run()
+        except QuotaParked as e:
+            return self._park(run_id, e)
         except RunStopped as e:
             return self._finish(run_id, "stopped", error=str(e))
         except RunRejected as e:
@@ -197,6 +207,41 @@ class RunManager:
             "repo_checks": [c.name for c in repo], "shadowed_by_org": shadowed})
         project = {"root": p["root"], "base": p["base"], "branch": run["branch"]}
         return org.model_copy(update={"checks": merged}), project
+
+    def _park(self, run_id: str, e: QuotaParked) -> dict[str, Any]:
+        """Daily limits: stop spending, remember when to come back (ADR-017)."""
+        started = self._started.pop(run_id, None)
+        if started is not None:
+            self.store.add_active_seconds(run_id, time.monotonic() - started)
+        resume_at = self.wall() + e.resume_in + random.uniform(*PARK_JITTER)
+        self.store.update_run(run_id, status="parked", resume_at=resume_at, error=str(e))
+        self.store.add_event(run_id, "run.parked", data={
+            "resume_at": resume_at, "resume_at_ist": ist(resume_at), "blocks": e.blocks})
+        return self.store.get_run(run_id) or {}
+
+    def due(self, now: float | None = None) -> list[str]:
+        return self.store.due_parked(self.wall() if now is None else now)
+
+    async def resume_due(self, approver: Approver | None = None,
+                         now: float | None = None) -> list[dict[str, Any]]:
+        """Resume every parked run whose reset has passed, one at a time."""
+        out = []
+        for rid in self.due(now):
+            if rid not in self.tasks:
+                out.append(await self.execute(rid, approver))
+        return out
+
+    def add_allowance(self, run_id: str, calls: int = 0, tokens: int = 0) -> None:
+        run = self.store.get_run(run_id)
+        if run is None:
+            raise KeyError(run_id)
+        opts = dict(run["options"] or {})
+        extra = dict(opts.get("budget_extra") or {})
+        extra["calls"] = int(extra.get("calls", 0)) + max(0, calls)
+        extra["tokens"] = int(extra.get("tokens", 0)) + max(0, tokens)
+        opts["budget_extra"] = extra
+        self.store.update_run(run_id, options=opts)
+        self.store.add_event(run_id, "budget.extended", data=extra)
 
     def _finish(self, run_id: str, status: str, *, error: str | None = None, result: str | None = None,
                 unapproved: list[str] | None = None) -> dict[str, Any]:

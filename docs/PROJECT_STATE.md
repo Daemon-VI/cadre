@@ -132,6 +132,28 @@ products: Yes"; Cloudflare: "All limits reset daily at 00:00 UTC", no training; 
 `qwen/qwen3.8-27b` on the free plan at 30 RPM / 1K RPD / 8K TPM / 200K TPD; DeepSeek's own API is
 paid and OpenRouter lists no DeepSeek `:free` model).
 
+### M10 — multi-day runs — COMPLETE offline, 2026-09-17
+- **Park instead of fail (ADR-017)** — when every eligible model is blocked by a daily limit
+  beyond `max_wait`, the run becomes `parked` with `resume_at` = the earliest reset + 30–120 s
+  jitter and a `run.parked` event naming each model, its reason and the reset (in IST). Fake-clock
+  test: 22:00 UTC, RPD 2, three steps → two ran, the run parked for 2 h + jitter, the clock passed
+  midnight, `resume_due` finished it, and the provider saw **3 calls in total** (no step billed
+  twice). Minute limits still wait (two `route.wait` events, no park). OK
+- **Resuming** — `cadre resume --due` (one pass over due runs), `cadre serve` (checks every 60 s;
+  tested with a due parked run that the server finished by itself), `cadre scheduler
+  install|uninstall|status` (Windows Task Scheduler every 30 min; prints the exact `schtasks`
+  command and asks first). The scheduler was **not installed** — that needs Rithik's yes.
+  `cadre scheduler status` on this machine: "The scheduled task is not installed." OK
+- **Cumulative budgets** — calls and tokens start from what the run already used; active minutes
+  accumulate; `resume --add-calls/--add-tokens` raises a stopped run's allowance (test: stopped at
+  2/2 calls, +1 call, finished). `max_days` (default 7) stops a run by name; `max_tokens_per_day`
+  parks it until the next UTC day (test: 150/100 → parked after one call). OK
+- Dashboard: `parked` status, a "resumes around …" callout, a Resume button, and timeline entries
+  for parks, worktree, commits and privacy exclusions. (Not yet seen in a browser.)
+- One v0.1 test changed on purpose: an exhausted daily limit now parks instead of raising
+  `NoModelAvailable` (`test_router::test_exhausted_quota_parks_with_a_reason_that_names_the_model`).
+- Tests: **150 passed, 1 skipped, 24.5 s**; ruff clean.
+
 ### M9 — project mode — COMPLETE offline, 2026-09-17
 - **Worktree on its own branch (ADR-016)** — `cadre run <org> "<goal>" --project PATH [--base B]
   [--allow-dirty]` (and the API's `project/base/allow_dirty`). A non-repo, a repo with no commits,
