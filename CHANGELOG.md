@@ -39,6 +39,13 @@ has been run against real free models.
 - Gemini 2.5 models were removed from the preset (404 for new users); DeepSeek is labelled paid.
 - Research and startup writers may produce up to 2,500–3,000 output tokens.
 
+### Fixed — found before installing the scheduler
+- The scheduled job ran `python.exe` (a console window every 30 minutes); it now runs the
+  environment's `pythonw.exe -m cadre.scheduled`, which logs to `~/.cadre/logs/scheduler.log`.
+- A run heartbeat only when it emitted an event, so one model call or quota wait longer than
+  90 s let another process's `resume --due` mark a live run interrupted; runs now also
+  heartbeat every 20 s.
+
 ### Fixed — found by running real free models (M5)
 - Gemini 3 tool loops failed without `thought_signature`; signatures are replayed to their issuer
   and foreign calls get Google's placeholder; a tool loop stays on its model when it can.

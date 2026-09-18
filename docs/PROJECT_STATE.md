@@ -391,7 +391,13 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
    entry, update the README quick start (add a key → forecast → run → review the branch),
    commit, and create the local tag `v1.0.0`.
 3. Look at the dashboard in a browser (Runs, Usage, Models & keys, a parked run).
-4. Decide whether to install the resume scheduler (`uv run cadre scheduler install` asks first).
+4. Done 2026-09-18 on Rithik's yes: Task Scheduler job "Cadre - resume parked runs", every 30 min,
+   runs `.venv\Scripts\pythonw.exe -m cadre.scheduled` (no console window; output in
+   `~/.cadre/logs/scheduler.log`). Triggered once by hand: log "No parked run is due.", exit 0,
+   Last Result 0. Remove with `uv run cadre scheduler uninstall`. Before installing, two fixes
+   (172 passed): the job used `python.exe` (a window every 30 min), and a run heartbeat only on
+   events, so a model call or quota wait > 90 s let the job's `resume --due` mark a live run
+   interrupted — runs now heartbeat every 20 s as well.
 5. Done 2026-09-18: private `Daemon-VI/cadre` created on Rithik's yes, `main` pushed. Tags and
    visibility still need his yes; CI needs a `gh` token with the `workflow` scope.
 6. After v1.0: `ROADMAP.md` M12 (container runner for checks).

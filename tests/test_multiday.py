@@ -141,9 +141,43 @@ def test_scheduler_command_is_shown_not_run(monkeypatch):
     args = scheduler.install_args(30)
     assert args[:6] == ["schtasks", "/Create", "/SC", "MINUTE", "/MO", "30"]
     assert args[args.index("/TN") + 1] == scheduler.TASK_NAME
-    assert args[args.index("/TR") + 1].endswith("-m cadre.cli resume --due --quiet")
+    task = args[args.index("/TR") + 1]
+    assert task.endswith("-m cadre.scheduled") and "cmd" not in task
     monkeypatch.setenv("CADRE_HOME", r"C:\somewhere\.cadre")
-    assert 'set "CADRE_HOME=C:\\somewhere\\.cadre"' in scheduler.resume_command()
+    assert scheduler.resume_command().endswith(r'-m cadre.scheduled "C:\somewhere\.cadre"')
     with pytest.raises(ValueError):
         scheduler.install_args(1)
     assert scheduler.uninstall_args()[:2] == ["schtasks", "/Delete"]
+
+
+def test_scheduled_entry_point_logs_instead_of_printing(home, capsys):
+    from cadre import scheduled
+
+    assert scheduled.main([str(home.root)]) == 0
+    log = (home.root / "logs" / "scheduler.log").read_text(encoding="utf-8")
+    assert "resume --due" in log and "No parked run is due." in log and log.endswith("exit 0\n")
+    assert capsys.readouterr().out == ""  # pythonw has no stdout; nothing may go there
+
+
+async def test_a_long_model_call_keeps_the_run_alive(home, monkeypatch):
+    """A call longer than STALE_AFTER must not let another process mark the run interrupted."""
+    import asyncio
+
+    from cadre import runs
+
+    monkeypatch.setattr(runs, "HEARTBEAT_EVERY", 0.02)
+    seen = {}
+
+    async def slow(model, messages, tools):
+        rid = m.store.list_runs()[0]["id"]
+        before = m.store.get_run(rid)["updated"]
+        await asyncio.sleep(0.2)  # no events during this call
+        seen["advanced"] = m.store.get_run(rid)["updated"] > before
+        return "done"
+
+    one = "name: one\nagents: [{id: a, role: r}]\nworkflow:\n  - {agent: a, task: one}\n"
+    m = RunManager(home, router=router_for(ScriptedProvider("p", slow), Clock("2026-09-17T10:00:00"),
+                                           Limits()))
+    rid = m.create("", "g", org_yaml=one)
+    assert (await m.execute(rid))["status"] == "succeeded"
+    assert seen["advanced"]

@@ -56,6 +56,7 @@ RESUMABLE = ("interrupted", "failed", "stopped", "cancelled", "unapproved", "par
 #: when a live event stream should end: the run is not going to produce more events by itself
 STREAM_END = (*TERMINAL, "parked")
 PARK_JITTER = (30.0, 120.0)
+HEARTBEAT_EVERY = 20.0  # well inside store.STALE_AFTER, so a long call never looks like a crash
 
 
 class RunManager:
@@ -178,7 +179,11 @@ class RunManager:
                         "private run: every configured provider trains on prompts or does not say "
                         "(" + ", ".join(sorted({m.provider for m in excluded})) + "). Add Groq or "
                         "Cloudflare, or run without --private")
-            out = await Engine(ctx).run()
+            beat = asyncio.create_task(self._beat(run_id))
+            try:
+                out = await Engine(ctx).run()
+            finally:
+                beat.cancel()
         except QuotaParked as e:
             return self._park(run_id, e)
         except RunStopped as e:
@@ -200,6 +205,14 @@ class RunManager:
         unapproved = unapproved_steps(store, run_id)
         status = "unapproved" if unapproved else "succeeded"
         return self._finish(run_id, status, result=out.text, unapproved=unapproved)
+
+    async def _beat(self, run_id: str) -> None:
+        """Heartbeat on a timer as well as on events: one model call or quota wait can pass
+        STALE_AFTER without an event, and another process (`resume --due` from the scheduled
+        task) would then mark a live run interrupted."""
+        while True:
+            await asyncio.sleep(HEARTBEAT_EVERY)
+            self.store.heartbeat(run_id)
 
     def _prepare_project(self, run: dict[str, Any], org):
         """Create or reuse the worktree and merge the repository's checks into the org."""

@@ -11,16 +11,20 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 TASK_NAME = "Cadre - resume parked runs"
 
 
 def resume_command() -> str:
-    """The command the job runs: this interpreter, this Cadre, this CADRE_HOME."""
-    cmd = f'"{sys.executable}" -m cadre.cli resume --due --quiet'
+    """The command the job runs: this environment's windowless pythonw (a python.exe or a cmd
+    wrapper would flash a console every N minutes), this Cadre, this CADRE_HOME."""
+    exe = Path(sys.executable)
+    windowless = exe.with_name("pythonw.exe")
+    cmd = f'"{windowless if windowless.exists() else exe}" -m cadre.scheduled'
     home = os.environ.get("CADRE_HOME")
     if home:
-        cmd = f'cmd /c "set "CADRE_HOME={home}" && {cmd}"'
+        cmd += f' "{home}"'
     return cmd
 
 
