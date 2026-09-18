@@ -57,3 +57,5 @@ Commits are authored and committed as
 override it). Never add a Claude co-author trailer or "Generated with" line. Branch `main`.
 Remote `origin` = `https://github.com/Daemon-VI/cadre`, **private** (created 2026-09-18). Commit,
 then push `main`. Making it public, and pushing tags, are Rithik's calls — ask first.
+A plain `git push` hangs here (Git Credential Manager opens a sign-in window); push with gh's login:
+`git -c credential.helper= -c 'credential.helper=!"/c/Program Files/GitHub CLI/gh.exe" auth git-credential' push origin main`.
