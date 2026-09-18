@@ -147,7 +147,7 @@ editor and validator; models and keys with live quota bars; pending approvals.
 | `software-team` | sequence → review loop → docs | PM writes a spec, engineer builds and tests, an independent reviewer checks it, `compile` and `tests` checks gate it, a writer documents it |
 | `decision-board` | council | CFO, CTO, CMO and a risk officer propose, critique, and vote; the CEO chairs, breaks ties and writes the memo |
 | `startup-company` | manager | A founder plans a task graph for researcher, engineer, designer and marketer; a QA lead reviews each deliverable |
-| `project-finisher` | Finish work in an existing repository (`--project`): lead plans, engineer edits, repo checks gate, independent reviewer, branch delivered |
+| `project-finisher` | manager (repo checks, reviewer) | Finishes work in an existing repository (`--project`): the lead plans, the engineer edits, the repo's own checks gate, a reviewer on another family advises, a branch is delivered |
 | `research-desk` | parallel → review loop → approval | Three analysts in parallel, an editor merges, a fact-checker reviews, a human approves |
 
 Copy one to edit: `uv run cadre org new my-team --from software-team`, then
@@ -190,7 +190,8 @@ Step types (`type:` may be omitted when the keys make it obvious):
 | `approval` | wait for a human |
 
 Templates can use `{goal}`, `{prev}` and `{out.<step id>}`. Tools: `list_files`, `read_file`,
-`write_file`, `post_note`, `run_check`, `ask_human`. Everything is validated before the first
+`search`, `write_file`, `edit_file`, `post_note`, `run_check`, `ask_human` (see *Agent tools*).
+Everything is validated before the first
 model call, and errors name their path in the file.
 
 ## Free providers (checked 2026-09-17)
@@ -201,14 +202,14 @@ daily clock and a recorded answer to "does the free tier train on my prompts?".
 | Preset | Models and limits Cadre starts from | Day resets | Trains on free prompts |
 |---|---|---|---|
 | `groq` | `openai/gpt-oss-120b`, `gpt-oss-20b`, `qwen/qwen3.8-27b`: 30 RPM, 1,000 RPD, 8,000 TPM, 200k TPD each (docs). Two model families on one key | rolling (no clock published; headers override) | no |
-| `gemini` | Ten chat models, each its own bucket: Gemini 3.8/3.7/3.6/3.5 Flash and 3 Flash preview, 2.5 Flash and 2.5 Pro, 3.5/3.1/2.5 Flash-Lite. Google publishes no per-model numbers; Flash 20 RPD and Flash-Lite 500 RPD are third-party reports, the rest are guesses | midnight Pacific (docs) | **yes** |
+| `gemini` | Seven chat models, each its own bucket: Gemini 3.8/3.7/3.6/3.5 Flash, 3 Flash preview, 3.5/3.1 Flash-Lite (the 2.5 models answered 404 to a new key on 2026-09-17). Google publishes no per-model numbers; Flash 20 RPD and Flash-Lite 500 RPD are third-party reports, the rest are guesses; a daily-quota 429 teaches Cadre the real limit | midnight Pacific (docs) | **yes** |
 | `openrouter` | `:free` models, discovered: 20 RPM, 50/day (1,000/day once 10 credits were ever bought) (docs) | UTC day (docs) | unknown — depends on the model's host |
 | `mistral` | medium/small: 2 RPM (reported) | not stated | **yes** unless you opt out |
 | `cohere` | `command-a-03-2025`: 20 RPM, 1,000 calls/month, non-commercial (docs) | not stated | yes unless you opt out |
 | `nvidia` | `meta/llama-3.3-70b-instruct`: 40 RPM (reported); trial credits | not stated | **yes** (trial terms) |
 | `cloudflare` | Llama 3.3 70B, gpt-oss-120b: 10,000 neurons/day, 300 RPM; needs `--param account_id=…` | 00:00 UTC (docs) | no |
 | `zai` | `glm-4.7-flash`, `glm-4.5-flash` (free per docs; limits guessed) | not stated | unknown |
-| `huggingface` | ~$0.10 credit/month | monthly | unknown — depends on the upstream provider |
+| `huggingface` | ~$0.10 credit/month | counted per UTC day (the credit itself is monthly) | unknown — depends on the upstream provider |
 | `ollama`, `llamacpp`, `lmstudio` | local, no key, no limits — slow on an 8 GB laptop | — | no |
 | `deepseek`, `openai`, `anthropic`, `custom` | **paid**, opt-in, same adapter. DeepSeek has no free tier, and OpenRouter listed no free DeepSeek model on 2026-09-17 | — | — |
 

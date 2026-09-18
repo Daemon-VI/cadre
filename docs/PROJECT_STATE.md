@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-17 (v0.1.0 + v1.0 programme: M6–M10 done offline; M5 and M11 blocked)_
+_Last updated: 2026-09-18 (v1.0 programme complete through M11, live on Groq + Google AI Studio; release blocked on one definition-of-done item)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,12 +13,14 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: v0.1.0 — complete and verified offline; never yet run against a real model
-_Everything below was observed with the scripted/demo provider and mocked HTTP. Whether free
-models follow the verdict, vote and plan JSON shapes, how many repair turns they need, and what
-a template really costs in tokens are **unverified** until M5 runs on a live key. No key was
-available in this session (none in the environment; Tessera's stored Groq key was deliberately
-not borrowed without asking)._
+## Status: v1.0 programme complete through M11 — not yet tagged
+_Built and verified offline through M10 (2026-09-17), then run live on Groq and Google AI Studio free
+keys: all five templates (M5) and both capstones (M11) — see the tables below. 170 tests pass
+(1 skipped). **v1.0.0 is not tagged**: one definition-of-done item fails (keys in the transcript;
+see "Definition of done" below). The v0.1.0 section that follows is the offline record of
+2026-09-16 and is kept as history._
+
+### v0.1.0 (2026-09-16) — verified offline
 
 ### SDLC record (2026-09-16)
 | Phase | Artefact | State |
@@ -68,7 +70,7 @@ not borrowed without asking)._
   approval unless `--allow-exec`. **Not a sandbox**: approved checks run model-written code as the
   owner. The workspace refuses `..`, absolute paths, drive letters, `~`, NTFS streams, device
   names and `.git` (12 cases tested). OK
-- **Keys** — OS credential store (`keyring`), else `CADRE_KEY_<ID>`, else the preset's variable.
+- **Keys** — `CADRE_KEY_<ID>`, else the preset's variable, else the OS credential store (`keyring`).
   A planted key echoed back by a mocked 401 *and* typed into the goal was absent from
   `cadre.sqlite*` afterwards (found and fixed a real leak doing this — see TEST_PLAN defects). OK
 - **Persistence and resume** — SQLite (WAL): runs, events, step results, usage, quota counters,
@@ -88,28 +90,33 @@ not borrowed without asking)._
   no `innerHTML`; **rendering in a browser is unverified** (Chrome extension not connected). OK
 
 ### Numbers
-- Code: ~5,000 lines of Python in `src/`, ~740 lines of dashboard JS/CSS, ~1,170 lines of tests.
-- Tests: 96 passed, 1 skipped (directory symlink needs Windows Developer Mode), 8.1 s.
-- Lint: `ruff check src tests` clean.
+- v0.1.0 (2026-09-16): ~5,000 lines of Python in `src/`, ~740 lines of dashboard JS/CSS, ~1,170
+  lines of tests; 96 passed, 1 skipped, 8.1 s.
+- 2026-09-18: 6,985 lines of Python in `src/cadre`, 842 lines in `web/`, 2,522 lines of tests;
+  170 passed, 1 skipped (directory symlink needs Windows Developer Mode); `ruff` clean.
 
-### Known limitations
-- No live-model evidence (M5). The demo provider is plumbing, not intelligence — it says `[demo]`.
+### Known limitations (current)
+- The demo provider is plumbing, not intelligence — it says `[demo]`.
+- **No run has parked live**; park/resume is verified with a fake clock only (M10, M11).
+- Review *quality* is not assessed — only routing and independence are measured.
+- Active time lost on interruption: a killed process never adds its segment to `active_seconds`
+  (capstone 1's first 485 s are missing), so `max_minutes` undercounts interrupted runs.
+- Forecast history is per org, not per project size (capstone 2 was 2.3× over a measured n = 1
+  taken on a 300-token fixture).
+- The dashboard has never been seen in a browser (Chrome extension not connected).
 - Gemini, Mistral, Z.ai limits are conservative guesses or third-party reports (`presets.py`
   marks each); the header learning corrects them only where a provider sends headers.
 - Checks are not sandboxed (ADR-006). Use `--allow-exec` only for goals you trust.
 - Single user. The token is one shared secret; no roles, no per-team budgets yet (M13).
-- Resume gives the run a fresh budget window (documented choice, not an accident).
+- Budgets are cumulative across resumes and parks (M10); `resume --add-calls` raises them.
 - Starlette warns that its TestClient's `httpx` backend is deprecated; harmless for now.
 
 ## v1.0 programme (started 2026-09-17)
 
-**Headline (end of 2026-09-17):** requirements, design and plan written; M6 catalogue/clocks/privacy,
-M7 ledger/forecast, M8 edit tools/repo map, M9 project mode, M10 multi-day runs all built and
-tested offline — **150 passed, 1 skipped, 24.5 s**, ruff clean, commits `1547bd3`…`90a776d`, no
-remote (push skipped). **Still no live model call has ever been made**, so everything that depends
-on real model behaviour (JSON shapes, repair rates, `edit_file` accuracy, token estimates, real
-429s and headers) is unverified. M5 and M11 are blocked on a session permission, not on a key.
-`git grep` for key prefixes finds only the four fake fixtures in `tests/`.
+**Headline (2026-09-18):** requirements, design and plan (P1–P3), M6–M10 built offline, M5 live
+verification on Groq + Google AI Studio (ten live-found defects fixed), M11 capstone (both runs
+succeeded). **170 passed, 1 skipped**, ruff clean, no remote (push skipped). `git grep` for key
+prefixes finds only five fake fixtures in `tests/` and the prefix names in two prompt docs.
 
 `docs/MASTER_PROMPT.md` turns Rithik's restated idea — *build or finish a project on free keys
 only, across every provider, managing each model's usage* — into milestones M5–M11.
@@ -145,14 +152,14 @@ Fixtures only, under `~/.cadre/capstone/` (none of Rithik's real repositories).
 
 | Capstone | Template | Status | Wall / active | Calls | Tokens in + out | Waits / fallbacks / 429s | Parks | Reviews independent | Forecast → actual |
 |---|---|---|---|---|---|---|---|---|---|
-| 1. Build a unit-converter CLI (`…231009`) | software-team `--allow-exec` | **succeeded** after one interruption | interrupted when the session ended; resumed 18 Sep, 73 s | 35 | 110,073 + 8,443 | 11 / 5 / 0 | 0 | 0 of 9 | measured n=1: 27 calls, 94.0k → 35, 118.5k (1.26×) |
+| 1. Build a unit-converter CLI (`…231009`) | software-team `--allow-exec` | **succeeded** after one interruption | interrupted when the session ended (485 s, 11 calls); resumed 18 Sep, 72 s active — the first segment is not in `active_seconds` | 35 | 110,073 + 8,443 | 11 / 5 / 0 | 0 | 0 of 9 | measured n=1: 27 calls, 94.0k → 35, 118.5k (1.26×) |
 | 2. Finish `m11-inventory` (`…152845`) | project-finisher `--allow-exec --project` | **succeeded** | 179 s | 17 | 35,666 + 2,641 | 0 / 4 / 0 | 0 | 0 of 3 | measured n=1 (from the 300-token m5 fixture): 14, 16.8k → 17, 38.3k (**2.3×**) |
 
 - **Capstone 1 is a real program.** Goal: *"A command-line unit converter (length, mass,
   temperature) in Python, standard library only, with unittest tests and a README."* Delivered
   `app.py` (149 lines), `test_app.py` (85), `README.md` (48), `SPEC.md`. Re-run by hand: `Ran 9 tests
   … OK`; `app.py 10 km mi` → `6.2137`, `app.py 100 c f` → `212.0000`, `app.py 5 kg lb` → `11.0231`
-  (all correct); `--help` works. The engineer used `edit_file` 3× and `search` 2× with no tool
+  (all correct); `--help` works. The engineer used `edit_file` 3× and the reviewer `search` 2×, with no tool
   errors. The run was **interrupted** when the Claude Code session ended mid-run on 17 Sep and
   `cadre resume` finished it on 18 Sep reusing every finished step — live evidence for resume.
 - **Capstone 2 finished a half-built package.** Fixture: `inventory.store` finished (3 passing
@@ -177,13 +184,13 @@ all 3 + 10 preset models exist live. Measured with `tools/run_metrics.py` (reads
 
 | Run | Template | Status | Wall | Calls | Tokens in + out | Median 1st prompt | Repairs | Waits | Fallbacks | 429s | Reviews independent | Forecast (p90) → actual |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `…220210` | decision-board | succeeded | 125 s | 15 | 14,285 + 7,188 | 526 | 1 | 0 | 13 | 0 | 5 yes / 4 no | 18.5 calls, 12.4k → 15, 21.5k (tokens 1.7× over) |
-| `…220717` | research-desk (first try) | failed → resumed → succeeded | 171 + 231 s | 40 | 54,554 + 10,535 | — | 0 | 3 | 24 + 6 | 1 | — | — |
-| `…222128` | research-desk | succeeded | 277 s | 23 | 71,366 + 9,065 | 509 | 0 | 3 | 6 | 1 | 5 / 1 | measured n=1: 40, 65.1k → 23, 80.4k (1.2×) |
-| `…222632` | startup-company | **unapproved** (task t4 failed) | 1,249 s | 57 | 186,786 + 23,431 | 953 | 0 | 31 (QA 1,411 s) | 27 | 8 | 27 / 1 | 35.5, 47.7k → 57, 210.2k (**4.4×**) |
+| `…220210` | decision-board | succeeded | 125 s | 15 | 14,285 + 7,188 | 526 | 1 | 0 | 13 | 0 | 5 yes / 4 no | CLI output, not recorded as an event: 18.5 calls, ~12.2k → 15, 21.5k (tokens 1.7× over) |
+| `…220717` | research-desk (first try) | failed → resumed → succeeded | 171 + 231 s | 40 | 54,554 + 10,535 | — | 0 | 3 + 4 | 24 + 6 | 1 (Groq) | — | — |
+| `…222128` | research-desk | succeeded | 277 s | 23 | 71,366 + 9,065 | 509 | 0 | 3 | 6 | 1 (Groq) | 5 / 1 | measured n=1: 40, 65.1k → 23, 80.4k (1.2×) |
+| `…222632` | startup-company | **unapproved** (task t4 failed) | 1,249 s | 57 | 186,786 + 23,431 | 953 | 0 | 31 (QA 1,411 s) | 27 | 8 (Gemini daily) | 27 / 1 | 35.5, 47.7k → 57, 210.2k (**4.4×**) |
 | `…224959` | software-team `--allow-exec` | succeeded | 466 s | 27 | 86,234 + 7,760 | 751 | 0 | 6 | 11 | 8 (Gemini daily) | 7 / 2 | 23.8, 36.9k → 27, 94.0k (**2.5×**) |
 | `…225900` | project-finisher on `m5-fixture` | succeeded | 123 s | 14 | 15,364 + 1,478 | 823 | 0 | 5 | 7 | 4 (Gemini daily) | 2 / 1 | 60.5, 281k → 14, 16.8k (median 71k: **4.2× over**) |
-| `…230536` | decision-board via API stream | succeeded | 146 s | 14 | 13,186 + 7,920 | — | 0 | 4 | 2 | 1 | 3 / 6 | measured n=1: 21.5k → 21.1k |
+| `…230536` | decision-board via API stream | succeeded | 146 s | 14 | 13,186 + 7,920 | — | 0 | 4 | 2 | 1 (Gemini) | 3 / 6 | measured n=1: 21.5k → 21.1k |
 
 Which model served which role (examples): council members were spread across gpt-oss-120b,
 gemini-3.6-flash, qwen3.8-27b and gpt-oss-20b; the fourth member cannot be independent with three
@@ -222,6 +229,7 @@ live response or error):
 9. **Forecasts were off by up to 4.4×** — recalibrated from these runs (writers send ~2× their base
    prompt, readers ~3–5k, outputs 200–700 by role; readers' context is sized from the project when
    there is one). Template estimate (median tokens), old → new, each n = 1:
+   (as measured on 2026-09-17; later M5 changes moved them 1–3.5% higher, still within 2×)
    decision-board 12,231 → 17,470 (actual 21,473); research-desk 22,399 → 71,262 (80,431);
    startup-company 32,168 → 121,678 (210,217); software-team 25,513 → 86,992 (93,994);
    project-finisher on the fixture 71,120 → 18,688 (16,842). All now within 2×.
@@ -230,7 +238,8 @@ live response or error):
 
 Also observed live: **header learning works** — `GET /api/quota` showed Groq's
 `x-ratelimit-remaining-tokens` 4,689 (reset 9.9 s) and remaining requests 971 (reset 2,490 s);
-Groq sent 1–8 429s per run anyway, which cooled the model for its `retry-after` and fell back.
+Groq itself sent at most one 429 per run (2 in all, both on Qwen), which cooled the model for its
+`retry-after`; the 4–8 per run in the later runs were Gemini daily-quota 429s.
 **Editing tools**: the project-finisher engineer used `search`-free line reads and one
 `edit_file`, correct first time on a CRLF file; software-team needed no edits; **0 misuses** in
 the two runs. **software-team's deliverable is real**: 87-line `app.py`, 124-line `test_app.py`,
@@ -356,36 +365,35 @@ Tests after M5: **170 passed, 1 skipped, 24 s**; ruff clean.
   rows (tested). `reserve_pct` (default 10) already shrinks daily caps for the router.
 - Tests: **116 passed, 1 skipped, 11.1 s**; ruff clean.
 
-### M5 — blocked on a permission (2026-09-17)
-Rithik authorised using Tessera's Groq key and copied it into Cadre's Credential Manager entry
-himself (his command printed `copied`). The session's auto-mode safety classifier then refused,
-as credential access, `cadre provider add groq`, writing the provider entry, and adding an allow
-rule — so no live call has been made. The Groq preset now includes `qwen/qwen3.8-27b`, giving a
-second model family on the one free key (reviews can be independent).
+### M5 — blocked on a permission (2026-09-17) — superseded
+Kept as history: the first attempt stalled on the session's safety classifier; Rithik then allowed
+`Bash(uv run cadre:*)` and added fresh keys at the hidden prompt, and M5 ran (above).
+
+## Definition of done for v1.0 (checked 2026-09-18)
+| Item | State | Evidence |
+|---|---|---|
+| Every FR has a passing test; traceability complete; ruff clean | met | TEST_PLAN v0.1 + v1.0 tables; 170 passed, 1 skipped; `ruff check` clean |
+| Every template ran at least once on live free keys, numbers recorded | met | M5 table (five templates) |
+| Capstone results with raw numbers | met | M11 table (both succeeded) |
+| No key value in the repo, the database, `~/.cadre` | met | `git grep` finds five fake fixtures and two prefix-name docs; a content scan of `~/.cadre` (incl. `cadre.sqlite*`) for full-length Groq/Google key shapes found none; planted-key tests pass |
+| **No key value in the transcript** | **NOT met** | On 2026-09-17 Rithik pasted his Groq and Gemini keys into the chat. They stay exposed until he rotates both at the providers (console.groq.com/keys, aistudio.google.com/apikey) and re-adds the new ones with `uv run cadre provider add groq` / `gemini` at the hidden prompt |
+| Server RSS measured while a run streams | met | 64.5 MB idle, 72.9 MB peak while a live run streamed 55 events through the dashboard's stream endpoint (curl as the client; the dashboard itself has not been seen in a browser) |
+| Docs match the code (`claim-auditor`) | met | audit 2026-09-18: every live number matched the store; its stale/unsupported items were corrected in the same commit |
+
+**Therefore v1.0.0 is not tagged.** `pyproject.toml` and `__init__.py` stay at 0.1.0 and
+`CHANGELOG.md` says "1.0.0 — unreleased".
 
 ## Where to pick up
-0. **Next session prompt:** `docs/PROMPT_M5_M11.md` (live verification → capstone → v1.0),
-   written 2026-09-17. Allow `Bash(uv run cadre:*)` first.
-1. **Unblock M5 (Rithik).** The Groq key is already in Windows Credential Manager (copied from
-   Tessera on 2026-09-17, never printed). This session's auto-mode classifier refused every
-   command that reads it. Either add an allow rule with `/permissions` → `Bash(uv run cadre:*)`,
-   or run the commands yourself with a leading `!`:
-   ```
-   ! cd /c/Users/Rishi/cadre && uv run cadre provider add groq
-   ! cd /c/Users/Rishi/cadre && uv run cadre forecast decision-board "Should a two-person team build a budgeting app or a notes app first?"
-   ! cd /c/Users/Rishi/cadre && uv run cadre run decision-board "Should a two-person team build a budgeting app or a notes app first?" --yes
-   ```
-   Adding Gemini (`uv run cadre provider add gemini`) as well gives a third family and ten more
-   buckets.
-2. **M5 measurements** — run the five templates (`software-team --allow-exec`, `decision-board`,
-   `startup-company`, `research-desk --yes`, `project-finisher` on a scratch fixture repo) and
-   record calls, tokens, median fixed prompt, repairs, waits/fallbacks/429s, which model served
-   each role, and independence. Then compare with the M7 template estimates, check whether free
-   models use `edit_file` correctly (M8), and measure server RSS while a run streams.
-3. **M11 capstone** in `~/.cadre/capstone/` (a new CLI via `software-team`; a half-built fixture
-   repo via `project-finisher`), then `claim-auditor`, version 1.0.0, `CHANGELOG.md`, tag `v1.0.0`.
-4. Look at the dashboard in a browser (Usage page and parked runs are new and unseen).
-5. Decide whether to install the resume scheduler (`uv run cadre scheduler install` asks first).
+1. **Rithik: rotate the Groq and Gemini keys** pasted into the chat on 2026-09-17, and re-add the
+   new ones at the hidden prompt (`uv run cadre provider add groq`, then `gemini`). That closes
+   the last definition-of-done item.
+2. Then release: set 1.0.0 in `pyproject.toml` and `src/cadre/__init__.py`, date the CHANGELOG
+   entry, update the README quick start (add a key → forecast → run → review the branch),
+   commit, and create the local tag `v1.0.0`.
+3. Look at the dashboard in a browser (Runs, Usage, Models & keys, a parked run).
+4. Decide whether to install the resume scheduler (`uv run cadre scheduler install` asks first).
+5. Ask whether to create a private `Daemon-VI/cadre` repository (none exists; push skipped).
+6. After v1.0: `ROADMAP.md` M12 (container runner for checks).
 
 ## Environment
 `cd C:\Users\Rishi\cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`
