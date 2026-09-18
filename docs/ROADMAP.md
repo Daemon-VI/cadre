@@ -31,7 +31,7 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M8** | Code-editing tools and repo map | G7 · FR-13 | done 2026-09-17 (offline) |
 | **M9** | Project mode | G2 · FR-8 | done 2026-09-17 (offline, git fixtures) |
 | **M10** | Multi-day runs | G4 · FR-9 | done 2026-09-17 (offline, fake clock; scheduler not installed) |
-| **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | next |
+| **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | capstone done 2026-09-18 (both succeeded); release pending the definition-of-done items in PROJECT_STATE |
 | M12 | Container runner for checks | — | after v1.0 |
 | M13 | Multi-user organisations | — | after v1.0 |
 | M14 | Memory across runs | — | after v1.0 |

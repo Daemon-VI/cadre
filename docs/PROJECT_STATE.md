@@ -140,6 +140,36 @@ products: Yes"; Cloudflare: "All limits reset daily at 00:00 UTC", no training; 
 `qwen/qwen3.8-27b` on the free plan at 30 RPM / 1K RPD / 8K TPM / 200K TPD; DeepSeek's own API is
 paid and OpenRouter lists no DeepSeek `:free` model).
 
+### M11 — capstone on free keys — both runs SUCCEEDED, 2026-09-17/18
+Fixtures only, under `~/.cadre/capstone/` (none of Rithik's real repositories).
+
+| Capstone | Template | Status | Wall / active | Calls | Tokens in + out | Waits / fallbacks / 429s | Parks | Reviews independent | Forecast → actual |
+|---|---|---|---|---|---|---|---|---|---|
+| 1. Build a unit-converter CLI (`…231009`) | software-team `--allow-exec` | **succeeded** after one interruption | interrupted when the session ended; resumed 18 Sep, 73 s | 35 | 110,073 + 8,443 | 11 / 5 / 0 | 0 | 0 of 9 | measured n=1: 27 calls, 94.0k → 35, 118.5k (1.26×) |
+| 2. Finish `m11-inventory` (`…152845`) | project-finisher `--allow-exec --project` | **succeeded** | 179 s | 17 | 35,666 + 2,641 | 0 / 4 / 0 | 0 | 0 of 3 | measured n=1 (from the 300-token m5 fixture): 14, 16.8k → 17, 38.3k (**2.3×**) |
+
+- **Capstone 1 is a real program.** Goal: *"A command-line unit converter (length, mass,
+  temperature) in Python, standard library only, with unittest tests and a README."* Delivered
+  `app.py` (149 lines), `test_app.py` (85), `README.md` (48), `SPEC.md`. Re-run by hand: `Ran 9 tests
+  … OK`; `app.py 10 km mi` → `6.2137`, `app.py 100 c f` → `212.0000`, `app.py 5 kg lb` → `11.0231`
+  (all correct); `--help` works. The engineer used `edit_file` 3× and `search` 2× with no tool
+  errors. The run was **interrupted** when the Claude Code session ended mid-run on 17 Sep and
+  `cadre resume` finished it on 18 Sep reusing every finished step — live evidence for resume.
+- **Capstone 2 finished a half-built package.** Fixture: `inventory.store` finished (3 passing
+  tests), `inventory.report` stubbed with `NotImplementedError` and 5 failing tests. Result: one
+  commit on `cadre/20260918-152845-13a59c` (`inventory/report.py` +17/−3, tests untouched, author
+  Rithik's identity, no trailer); `git archive` of the branch re-run by hand: `Ran 8 tests … OK`.
+  The owner's side: `main` HEAD `87c6b40`, branch `main`, empty porcelain — identical before and
+  after (NFR-10 live).
+- **Honest gaps.** No review in either capstone was independent: Groq's Qwen — the only family
+  neither builder used — was still inside its rolling 24-hour limit from the M5 runs, and both
+  builders had used both gpt-oss and Gemini. Cadre routed the reviews anyway and recorded
+  `independent: false` for every one (ADR-004 working as designed; the verdicts rest on the
+  checks). **No run parked live**: daily limits were hit per model (Qwen, Gemini Flash) but
+  another model was always free, so M10's park/resume is still verified only with a fake clock.
+  Capstone 2's forecast was 2.3× low because the only measured history came from a 300-token
+  fixture; history is per org, not per project size — recorded as a known limitation.
+
 ### M5 — live verification on Groq + Google AI Studio — COMPLETE, 2026-09-17
 Keys: Groq (gpt-oss-120b, gpt-oss-20b, qwen3.8-27b) and Gemini, added by Rithik at the hidden
 prompt. `provider test`: Groq "13 models listed", Gemini "58 models listed"; `provider refresh`:
