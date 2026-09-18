@@ -260,3 +260,20 @@ def _tool_at(folder, name):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+async def test_exec_approval_shows_the_command_that_will_really_run(home):
+    import sys
+
+    seen = []
+
+    async def deny(kind, prompt, agent):
+        seen.append((kind, prompt))
+        return False, "no"
+
+    m = RunManager(home, secrets=MemorySecrets())
+    rid = m.create("software-team", "a word counter", demo=True)
+    await m.execute(rid, approver=deny)
+    [prompt] = [p for k, p in seen if k == "exec"][:1]
+    assert "{python}" not in prompt and sys.executable in prompt.replace('"', "")
+    assert m.store.list_runs()[0].keys() >= {"branch", "project_path", "resume_at"}

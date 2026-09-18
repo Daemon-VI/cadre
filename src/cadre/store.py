@@ -143,8 +143,8 @@ class Store:
         return row
 
     def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
-        rows = self._all("SELECT id, org, goal, status, created, updated, finished, error "
-                         "FROM runs ORDER BY created DESC LIMIT ?", (limit,))
+        rows = self._all("SELECT id, org, goal, status, created, updated, finished, error, branch, "
+                         "project_path, resume_at FROM runs ORDER BY created DESC LIMIT ?", (limit,))
         for r in rows:
             r.update(self.usage_totals(r["id"]))
         return rows

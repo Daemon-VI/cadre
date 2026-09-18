@@ -17,6 +17,7 @@ import json
 import math
 import re
 import string
+import subprocess
 import time
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
@@ -43,7 +44,7 @@ from .project import PROTECTED, ProjectError, commit_all
 from .providers import ProviderError
 from .router import CallRequest, CallResult, QuotaParked, Router
 from .store import Store
-from .tools import TOOLS, CheckResult, run_check_process
+from .tools import TOOLS, CheckResult, resolve_command, run_check_process
 from .types import Message, ToolSpec, Usage
 from .workspace import Workspace
 
@@ -331,7 +332,10 @@ class RunContext:
             known = ", ".join(c.name for c in self.org.checks) or "none"
             raise ValueError(f"no check called {name!r} (checks: {known})") from None
         if not self._exec_approved:
-            listed = "\n".join(f"  {c.name}: {' '.join(c.command)}" for c in self.org.checks)
+            # the command as it will actually run ({python} resolved), so the human approves
+            # exactly what executes (ADR-006, ADR-029)
+            listed = "\n".join(f"  {c.name}: {subprocess.list2cmdline(resolve_command(c.command))}"
+                               for c in self.org.checks)
             where = (f"the worktree of {self.project['root']}" if self.project
                      else str(self.workspace.root))
             prompt = (f"Allow this run to execute its declared checks in {where}? "
