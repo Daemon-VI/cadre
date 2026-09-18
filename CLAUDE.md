@@ -47,12 +47,13 @@ credential store. `cadre serve` does not hot-reload code.
   tokens per minute (Groq: 8,000). Prefer injecting context or extending an existing tool.
 - **Presets are dated priors** (`presets.py`, `CHECKED`). Change a number only with a source,
   and update the date and `source` field.
-- **Claims are measured.** Nothing about real-model behaviour is verified until M5 runs on a
-  live key; say "unverified" rather than guessing.
+- **Claims are measured.** Live evidence is the M5 and M11 tables in `PROJECT_STATE.md`;
+  anything not recorded there is "unverified", not guessed.
 
 ## Git
 
 Commits are authored and committed as
 `Rithik Krishna <317035893+Daemon-VI@users.noreply.github.com>` (the global identity — don't
 override it). Never add a Claude co-author trailer or "Generated with" line. Branch `main`.
-**No remote yet** — commit, and say the push was skipped.
+Remote `origin` = `https://github.com/Daemon-VI/cadre`, **private** (created 2026-09-18). Commit,
+then push `main`. Making it public, and pushing tags, are Rithik's calls — ask first.

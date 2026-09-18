@@ -125,4 +125,5 @@ Each is a test built from what a real model or provider did:
 - The dashboard in a browser (the Chrome extension was not connected on 2026-09-16 or 2026-09-17).
 - `cadre provider add` against a live endpoint (hidden prompt, keyring write on Windows).
 - Concurrent writers: a CLI run and a server writing the same SQLite file at high rates.
-- CI: `.github/workflows` not added — the repo has no remote.
+- CI: `.github/workflows` not added — the private remote exists (2026-09-18), but the `gh` token
+  lacks the `workflow` scope needed to push one.

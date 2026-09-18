@@ -204,7 +204,7 @@ review; the owner's tree and branches are never modified.
 | **NFR-4 Safety** | Model output never becomes a shell command; checks are declared, approved, time-limited | Tests for path escape, unknown check, exec approval |
 | **NFR-5 Reliability** | Crash → resume without repeating finished work | Resume test counts provider calls |
 | **NFR-6 Observability** | Every decision explainable from the event log | Events for routing choice, fallback, wait, verdict, tally |
-| **NFR-7 Portability** | Windows first, Linux/macOS compatible; Python 3.12+, `uv` | CI matrix (not yet run — no remote) |
+| **NFR-7 Portability** | Windows first, Linux/macOS compatible; Python 3.12+, `uv` | CI matrix (not yet run — no workflow added) |
 | **NFR-8 Honesty** | Model catalogues and free limits change; presets carry the date they were checked and are overridable | Preset table dated 2026-09-16 |
 | **NFR-9 Testability** | All behaviour testable with no network | Scripted provider; HTTP mocked with `httpx.MockTransport` |
 | **NFR-10 Owner's tree untouched** | A project run leaves the source repo's HEAD, current branch and `git status --porcelain` identical | Test compares all three before and after a run on a throwaway repo |

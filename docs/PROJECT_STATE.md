@@ -115,7 +115,7 @@ see "Definition of done" below). The v0.1.0 section that follows is the offline 
 
 **Headline (2026-09-18):** requirements, design and plan (P1–P3), M6–M10 built offline, M5 live
 verification on Groq + Google AI Studio (ten live-found defects fixed), M11 capstone (both runs
-succeeded). **170 passed, 1 skipped**, ruff clean, no remote (push skipped). `git grep` for key
+succeeded). **170 passed, 1 skipped**, ruff clean, pushed to the private `Daemon-VI/cadre` (2026-09-18). `git grep` for key
 prefixes finds only five fake fixtures in `tests/` and the prefix names in two prompt docs.
 
 `docs/MASTER_PROMPT.md` turns Rithik's restated idea — *build or finish a project on free keys
@@ -392,9 +392,10 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
    commit, and create the local tag `v1.0.0`.
 3. Look at the dashboard in a browser (Runs, Usage, Models & keys, a parked run).
 4. Decide whether to install the resume scheduler (`uv run cadre scheduler install` asks first).
-5. Ask whether to create a private `Daemon-VI/cadre` repository (none exists; push skipped).
+5. Done 2026-09-18: private `Daemon-VI/cadre` created on Rithik's yes, `main` pushed. Tags and
+   visibility still need his yes; CI needs a `gh` token with the `workflow` scope.
 6. After v1.0: `ROADMAP.md` M12 (container runner for checks).
 
 ## Environment
 `cd C:\Users\Rishi\cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`
-overrides). Git: branch `main`, **no remote** (commit only).
+overrides). Git: branch `main`, remote `origin` = private `Daemon-VI/cadre` (commit, then push).
