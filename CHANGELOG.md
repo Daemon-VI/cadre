@@ -25,6 +25,11 @@ observed output, or a dated source.
   owner, members and collaborators can trigger it (`examples/github-action/cadre.yml`).
 - `cadre provider add-from-env` registers every free provider whose key is in the environment,
   and `cadre run --result-json PATH` writes the outcome for scripts.
+- A VS Code extension (`editors/vscode`), also for Open VSX: a Runs tree, a live run view,
+  today's usage in the status bar, Forecast, Start run on this folder, Review branch, and Add
+  provider through the terminal's hidden prompt. `exec` approvals are a modal showing the exact
+  command. The token never reaches a webview.
+- A docs site (`site/`, GitHub Pages) with a replay of a real run's event log.
 - `docs/MCP_HOSTS.md`: config for Claude Code, VS Code, Cursor, Windsurf and Antigravity, each
   checked against the host's docs on 2026-09-18.
 - Standalone builds (PyInstaller) and a container image (`ghcr.io/daemon-vi/cadre`, non-root,
@@ -32,6 +37,8 @@ observed output, or a dated source.
   `compose.yaml`.
 
 ### Changed
+- `exec` approval prompts show each check's command as it will actually run (`{python}`
+  resolved), and `GET /api/v1/runs` rows include the branch, project and resume time.
 - In a standalone build, `{python}` in a check means the first Python on PATH (the build has
   no interpreter of its own), and the scheduler job calls `cadre scheduled-run`.
 - README rewritten for people who have never seen Cadre: quick start, measured numbers,

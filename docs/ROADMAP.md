@@ -122,9 +122,9 @@ the D6 decision.
 | **D1** | Package the engine: wheel smoke test, PyPI trusted publishing (`cadre-ai`), PyInstaller builds, GHCR image | FR-16 | built 2026-09-18; wheel smoke passes locally; `release.yml` not yet run (workflow scope); first publish needs Rithik |
 | **D2** | MCP server (`cadre mcp`, five tools, no approvals over MCP) | FR-17 | built 2026-09-18; verified over real stdio; host checks pending |
 | **D3** | GitHub Action (project mode on the checkout → PR; trusted triggers only) | FR-18 | built 2026-09-18 (`action.yml`, example workflow); the real test on a demo repo needs the workflow scope, the repo made public, Rithik's yes for `Daemon-VI/cadre-action-demo` and his secrets |
-| **D4** | VS Code extension, published to the Marketplace and Open VSX | FR-19 | — |
-| **D5** | Docs site on GitHub Pages | FR-20 | — |
-| **D6** | Desktop app (Tauri 2 + PyInstaller sidecar) — only on Rithik's yes | FR-21 | gate |
+| **D4** | VS Code extension, published to the Marketplace and Open VSX | FR-19 | built 2026-09-18; 70 unit tests + 4 integration tests in the installed VS Code; `.vsix` installs; UI not observed on screen; not published |
+| **D5** | Docs site on GitHub Pages | FR-20 | built 2026-09-18 (nine pages, links checked, real-run replay); Pages not enabled, needs the repo public |
+| **D6** | Desktop app (Tauri 2 + PyInstaller sidecar) — only on Rithik's yes | FR-21 | **skipped** 2026-09-18 (Rithik): the dashboard, the extension and MCP cover it; unsigned installers would warn |
 | **D7** | Hosted website — **not in this programme**: a public server would run strangers' model-written code and hold their keys, so it stays behind M12 (sandboxed checks) and M13 (user accounts) | — | deferred |
 
 ## Deferred, and why

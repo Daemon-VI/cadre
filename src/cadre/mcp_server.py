@@ -31,6 +31,7 @@ from .config import Home
 STATUS_EVENTS = 12
 RESULT_CHARS = 2000
 START_TIMEOUT = 30.0
+CREATE_BREAKAWAY_FROM_JOB = 0x01000000  # Windows process-creation flag
 DATA_KEYS = ("text", "verdict", "status", "error", "reason", "name", "passed", "model", "tally",
              "resume_at_ist", "detail", "summary", "branch")
 
@@ -64,6 +65,7 @@ class Api:
         self.base = f"http://127.0.0.1:{self.port}/api/v1"
         self.transport = transport
         self.autostart = autostart
+        self.started_here = False  # this MCP session started `cadre serve` itself
 
     def _client(self) -> httpx.AsyncClient:
         # the token is read at the moment of use and lives only in this request's headers
@@ -91,10 +93,17 @@ class Api:
         kw: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": log, "stderr": log,
                               "env": {**os.environ, "CADRE_HOME": str(self.home.root)}}
         if os.name == "nt":
-            kw["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            # Hosts may run MCP servers inside a Windows job object that kills every descendant when
+            # the session ends (observed with Claude Code 2.1.276): break away so runs outlive it.
+            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            try:
+                child = subprocess.Popen(self.serve_argv(), creationflags=flags | CREATE_BREAKAWAY_FROM_JOB,
+                                         **kw)
+            except OSError:  # the job forbids breakaway: still start, and say it may not outlive
+                child = subprocess.Popen(self.serve_argv(), creationflags=flags, **kw)
         else:
             kw["start_new_session"] = True
-        child = subprocess.Popen(self.serve_argv(), **kw)
+            child = subprocess.Popen(self.serve_argv(), **kw)
         log.close()
         (log_dir / "serve.pid").write_text(str(child.pid), encoding="utf-8")
 
@@ -104,6 +113,7 @@ class Api:
         if not self.autostart:
             raise ToolError(f"Cadre is not running on port {self.port}; start it with `cadre serve`.")
         self.start_server()
+        self.started_here = True
         deadline = time.monotonic() + START_TIMEOUT
         while time.monotonic() < deadline:
             await asyncio.sleep(0.5)
@@ -206,9 +216,16 @@ def build_server(home: Home, port: int | None = None, api: Api | None = None) ->
         if project:
             body["project"] = project
         started = await api.call("POST", "/runs", json=body)
-        return {"id": started["id"], "project": project or None,
-                "next": "call cadre_run_status with this id; approvals are the user's, not yours",
-                "dashboard": dashboard}
+        out = {"id": started["id"], "project": project or None,
+               "next": "call cadre_run_status with this id; approvals are the user's, not yours",
+               "dashboard": dashboard}
+        if api.started_here and os.name == "nt":
+            out["note"] = (
+                "Cadre's server was started by this editor session. On Windows the editor stops it "
+                "when the session ends; the run then shows as interrupted and `cadre resume "
+                f"{started['id']}` continues it without repeating finished steps. To keep runs going "
+                "after the editor closes, leave `cadre serve` running yourself.")
+        return out
 
     @mcp.tool()
     async def cadre_run_status(run_id: str) -> dict[str, Any]:

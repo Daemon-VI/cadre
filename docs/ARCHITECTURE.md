@@ -384,6 +384,16 @@ appears in a result. **Rejected.** *HTTP/SSE transport* — a second listening p
   workspace. The fallback is safe because project mode never writes to the owner's tree.
 - **The auto-started server** logs to `CADRE_HOME/logs/serve.log` and writes its PID to
   `serve.pid`, because stdout belongs to the protocol.
+- **Windows job objects (observed 2026-09-18).** The MCP SDK's stdio client and Claude Code 2.1.276
+  both start stdio servers inside a job object with `KILL_ON_JOB_CLOSE` and no breakaway
+  permission. So a `cadre serve` that `cadre mcp` started detached is killed when the host session
+  ends: seen with the SDK client and with `claude -p`. `CREATE_BREAKAWAY_FROM_JOB` is tried and
+  refused. Creating the process through WMI would escape the job, but that is a technique security
+  products flag as evasion, so Cadre does not use it. Instead a run started that way says it stops
+  with the session and `cadre resume <id>` continues it (finished steps are not repeated). Runs
+  truly outlive the editor when `cadre serve` was started outside it: by you, by `cadre ui`, or by
+  the VS Code extension. AC-17.2 holds on that path, and on Linux and macOS
+  (`start_new_session`); the latter is unverified.
 
 ### ADR-028 — Who may trigger the GitHub Action (FR-18)
 **Decision.** A composite action runs Cadre's CLI on the runner in project mode on the checkout,

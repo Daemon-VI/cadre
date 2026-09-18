@@ -5,8 +5,12 @@ Hosts change their config formats; if one stops working, the linked page is the 
 
 `cadre mcp` is an MCP server over stdio with five tools: `cadre_list_orgs`, `cadre_forecast`,
 `cadre_start_run`, `cadre_run_status` and `cadre_usage`. It starts `cadre serve` in the background
-when it isn't running, so runs outlive the editor. **It can't approve anything.** When a run waits
-for approval, you approve it yourself with `cadre approve <id>` or in the dashboard (ADR-027).
+when it isn't running. **On Windows**, hosts stop that auto-started server when the session
+ends, and a run then shows as interrupted until `cadre resume <id>` continues it. Start
+`cadre serve` yourself (or let the VS Code extension start it) so runs outlive the editor.
+
+**It can't approve anything.** When a run waits for approval, you approve it yourself with
+`cadre approve <id>` or in the dashboard (ADR-027).
 
 It needs the `mcp` extra, so every host launches it with:
 
@@ -112,4 +116,5 @@ Source: <https://antigravity.google/docs/mcp>.
 | Host | What was observed | When |
 |---|---|---|
 | A real stdio client (the MCP SDK's `Client` spawning `cadre mcp`, `tools/mcp_smoke.py`) | Five tools listed. `cadre serve` started detached on a spare port. Orgs, forecast (`cannot_run` with no key) and usage answered. The token appeared in no result, and the server was stopped afterwards | 2026-09-18 |
-| Claude Code, VS Code, Cursor, Windsurf, Antigravity | **Unverified in the host itself.** The package isn't on PyPI yet, and adding a server to a host changes its config (asks Rithik first) | — |
+| Claude Code 2.1.276 (`claude mcp add --scope project` in a fixture repo, then `claude -p` with `--mcp-config .mcp.json`) | Called `cadre_list_orgs` (5 orgs), `cadre_forecast` (`cannot_run`, "no history, estimated from template size", ~18.2 calls / 17,746 tokens) and `cadre_usage` (0 rows). The auto-started `cadre serve` was **killed when the session ended**: Windows job object, see ADR-027. Registration removed afterwards | 2026-09-18 |
+| VS Code, Cursor, Windsurf, Antigravity | Unverified in the host itself | — |
