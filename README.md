@@ -1,30 +1,70 @@
 # Cadre
 
-Run an organisation of AI agents — builders, reviewers, verifiers, deciders and managers — on
-the free model APIs you already have.
+**Cadre runs a team of AI agents that builds a new project or finishes an existing one, using
+only free model API keys.** It spreads the work across every provider you add, stays inside each
+one's rate limits, and when a day's quota runs out it parks the run and picks it up after the reset.
 
-Cadre is a self-hosted platform. You declare an organisation as one YAML file (who the agents
-are, what tools they may use, which checks decide "done", and how they work together), add
-whichever free model keys you have, and give it a goal. Cadre schedules every model call so the
-team stays inside each key's free limits, routes reviewers to a *different* model family from
-the builder, lets programs (tests, linters) — not model opinions — decide whether work passes,
-and counts votes in code.
+You describe the team as one YAML file: who the agents are, which tools they may use, which
+checks decide "done", and how they work together. Reviewers are routed to a *different* model
+family from the builder. Programs such as tests and linters decide whether work passes, not model
+opinions, and votes are counted by code.
 
-Three things drive the design (see `docs/SRS.md` §1):
+## Quick start
 
-1. **On free tiers, rate limits bind, not money.** Groq's free `openai/gpt-oss-120b` allows
-   8,000 tokens a minute; OpenRouter's `:free` models allow 50 requests a day. Cadre is first a
-   quota-aware scheduler across every key you add.
-2. **Review is only worth something if it is independent**, and a failing check always beats an
-   approving reviewer.
-3. **Group decisions must be auditable**: strict-JSON votes, tallied by code, dissent kept.
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/). Then:
 
-## Install
+```bash
+uvx cadre-ai provider add groq          # a free key from console.groq.com; typed at a hidden prompt
+uvx cadre-ai forecast project-finisher "Make the failing tests pass"     # will it fit today?
+uvx cadre-ai run project-finisher "Make the failing tests pass" --project ./my-repo --allow-exec
+git -C my-repo log --stat cadre/<run-id>                  # review the branch; Cadre never merges
+```
+
+To install it rather than run it through `uvx`, use `uv tool install cadre-ai` or
+`pip install cadre-ai`. The command is `cadre` either way. With no key at all, `cadre run
+decision-board "Should we open a second office?" --demo` runs an offline scripted team.
+
+> **Not on PyPI yet.** The first publish is pending. Until then, work from a clone: `uv sync`,
+> then run `uv run cadre …` wherever this page says `cadre` or `uvx cadre-ai`.
+
+## Measured, not claimed
+
+Every number here was observed on free Groq and Google AI Studio keys on 2026-09-17/18 and is
+recorded with its run id in [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) (the M5 and M11
+tables).
+
+| What | Result |
+|---|---|
+| `decision-board` (a five-member council votes, then a memo is written) | succeeded · 15 calls · 21.5k tokens · 125 s |
+| `software-team --allow-exec` (spec → build → independent review → tests gate) | succeeded · 27 calls · 94.0k tokens · 466 s |
+| `project-finisher` on a half-built fixture repository | succeeded · 14 calls · 16.8k tokens · 123 s · owner's tree unchanged |
+| Capstone 1: build a unit-converter CLI | succeeded · `Ran 9 tests … OK` when re-run by hand |
+| Capstone 2: finish a half-built package | succeeded · `Ran 8 tests … OK` on the delivered branch; owner's HEAD, branch and working tree unchanged |
+| Defects that only real models exposed | 10, each fixed with a regression test built from the live response |
+| One-line change: rewrite the file vs `edit_file` | 7,056 vs 134 tokens (Cadre's 4-characters-a-token estimate) |
+| Server memory while a live run streamed | 64.5 MB idle, 72.9 MB peak |
+
+## Limitations
+
+- **Checks are not sandboxed.** A check runs code the agents wrote, as you, on your machine. The
+  model can only name a check declared in the org file, never supply a command, and checks need
+  `--allow-exec` or your approval. Don't give an untrusted goal to an org with checks. A
+  container runner is roadmap item M12.
+- **No run has parked live yet.** Parking on a daily limit and resuming after the reset is
+  verified with a fake clock. A real interrupted run did resume the next day without re-billing.
+- **Review quality is not measured.** Only the routing of reviewers to another model family is.
+- **Forecasts are rough.** They were off by up to 4.4× before recalibration, and 2.3× on a later
+  run, because history is kept per org and not per project size.
+- **Tested by hand on Windows only.** CI covers Linux and macOS.
+- **Free tiers change without notice.** Preset limits are dated starting values, corrected at
+  run time by each provider's rate-limit headers.
+
+## Install from source
 
 Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-cd cadre
+git clone https://github.com/Daemon-VI/cadre && cd cadre
 uv sync
 uv run cadre init          # creates ~/.cadre (set CADRE_HOME to put it elsewhere)
 ```
@@ -32,7 +72,7 @@ uv run cadre init          # creates ~/.cadre (set CADRE_HOME to put it elsewher
 ## Try it with no key
 
 The demo mode swaps in a scripted, offline model that exercises every workflow end to end. It
-is plumbing, not intelligence — every answer it writes is marked `[demo]`.
+is plumbing, not intelligence: every answer it writes is marked `[demo]`.
 
 ```bash
 uv run cadre run decision-board "Should we open a second office?" --demo
@@ -50,7 +90,9 @@ uv run cadre provider test groq
 
 The key goes to the OS credential store (Windows Credential Manager, macOS Keychain, Secret
 Service), never to a file. Environment variables work too, checked first:
-`CADRE_KEY_GROQ`, then the provider's usual name (`GROQ_API_KEY`).
+`CADRE_KEY_GROQ`, then the provider's usual name (`GROQ_API_KEY`). On a headless machine with no
+keychain (a server, a container, CI), set `CADRE_NO_KEYRING=1` and pass keys only as environment
+variables.
 
 Add as many providers as you have keys. More providers means more parallel capacity and real
 reviewer independence.
@@ -123,7 +165,7 @@ is repeated or billed again when it resumes.
 ```bash
 uv run cadre serve                 # resumes parked runs by itself while it is running
 uv run cadre resume --due          # or resume every run whose reset has passed, once
-uv run cadre scheduler install     # or let Windows Task Scheduler do that every 30 minutes (asks first)
+uv run cadre scheduler install     # or check every 30 minutes from the OS scheduler (asks first)
 ```
 
 Budgets count everything a run has used across days. `max_days` (default 7) stops a run that has
@@ -136,6 +178,9 @@ gone on too long; `max_tokens_per_day` spreads a job over several days; `cadre r
 uv run cadre serve       # http://127.0.0.1:8765, loopback only
 uv run cadre ui          # opens the browser with the access token in the URL fragment
 ```
+
+To reach it through a Tailscale name or from a container, add `--allowed-host NAME` (repeatable,
+exact names only); anything else is still refused. The API is versioned at `/api/v1`.
 
 Runs with a live timeline, files, per-agent token usage and results; organisations with a YAML
 editor and validator; models and keys with live quota bars; pending approvals.
@@ -260,7 +305,13 @@ uv run pytest -q
 uv run ruff check src tests
 ```
 
-The tests need no network and no key: HTTP is mocked and models are scripted.
+The tests need no network and no key: HTTP is mocked and models are scripted. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md); report security problems privately as described in
+[`SECURITY.md`](SECURITY.md).
+
+## Licence
+
+Apache-2.0. See [`LICENSE`](LICENSE).
 
 ## Documentation
 

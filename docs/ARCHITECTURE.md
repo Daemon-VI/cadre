@@ -396,3 +396,15 @@ the VS Code Marketplace and Open VSX (Antigravity, Cursor and Windsurf install f
 settings or `SecretStorage` copies, and never shown in UI. Webviews are the XSS surface: no
 `innerHTML`, no remote resources. **Rejected.** *Token in settings* — synced to the cloud by
 Settings Sync.
+
+### ADR-030 — Apache-2.0, and one reviewed weak-copyleft dependency (FR-14.1)
+**Decision.** Cadre is Apache-2.0 (permissive, with a patent grant; chosen with Rithik on
+2026-09-18). `tools/check_licences.py` runs in CI in an environment holding only the package and
+its runtime dependencies, fails on any copyleft licence, and fails on any licence it does not
+recognise as permissive. **Measured 2026-09-18:** 31 runtime dependencies. 30 are MIT, BSD, ISC,
+Apache-2.0 or PSF. `certifi` is **MPL-2.0**, so the distribution prompt's "all dependencies are
+MIT, BSD or Apache" was not quite right. MPL-2.0 is file-level copyleft: it binds only changes to
+certifi's own files, and Cadre uses it unmodified through httpx, so it is allowed **by name** and
+no other MPL package is. PyInstaller (D1) is GPL with a bootloader exception that lets frozen
+applications carry any licence; it is a build tool and is not shipped in the wheel.
+**Rejected.** *A blanket MPL allowance* — the next MPL dependency should be a reviewed decision.

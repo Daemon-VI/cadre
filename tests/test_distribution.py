@@ -147,3 +147,30 @@ def test_no_keyring_means_env_only(monkeypatch):
     assert s.get("mistral", "MISTRAL_API_KEY") is None
     with pytest.raises(RuntimeError, match="CADRE_KEY_GROQ"):
         s.set("groq", "new")
+
+
+# ---------------------------------------------------------------- FR-14.3 history checks
+def _tool(name):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).parents[1] / "tools" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_history_check_patterns_catch_what_they_guard():
+    h = _tool("check_history")
+    name = "M" + "PPS KANA" + "JIGUDA"  # assembled, so no tracked file holds the name
+    assert h.PRIVATE.search(f"C:/Users/{name}/.claude") and h.PRIVATE.search(name.lower().replace(" ", "_"))
+    assert not h.PRIVATE.search("Rithik Krishna")
+    assert h.KEYS.search("gsk_" + "A1" * 26) and h.KEYS.search("AIza" + "b" * 35)
+    assert not h.KEYS.search("AIza-test-not-a-real-key-000")
+
+
+def test_licence_policy_flags_copyleft():
+    lic = _tool("check_licences")
+    for bad in ("GNU General Public License v3 (GPLv3)", "AGPL-3.0", "LGPL-2.1", "MPL-2.0"):
+        assert lic.COPYLEFT.search(bad)
+    for good in ("MIT", "BSD-3-Clause", "Apache-2.0 OR BSD-2-Clause", "ISC License (ISCL)"):
+        assert not lic.COPYLEFT.search(good)

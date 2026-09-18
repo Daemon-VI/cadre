@@ -3,6 +3,23 @@
 All dates are 2026. Numbers come from `docs/PROJECT_STATE.md`, where each one is traced to a test,
 observed output, or a dated source.
 
+## 1.1.0 — unreleased (distribution)
+
+### Added
+- Apache-2.0 licence; the PyPI distribution is `cadre-ai` (the command stays `cadre`, and a
+  `cadre-ai` alias makes `uvx cadre-ai …` work).
+- `/api/v1`: every endpoint, pinned by an OpenAPI snapshot test. The unversioned `/api/*` stays as
+  an alias until 2.0.
+- `cadre serve --allowed-host NAME` for Tailscale names and containers (exact names only).
+- `cadre scheduler install` on Linux (systemd user timer) and macOS (launchd agent).
+- CI: tests on Windows, macOS and Ubuntu with Python 3.12 and 3.13; licence, history and gitleaks
+  checks; a wheel smoke test that runs a demo from a clean venv.
+- `SECURITY.md`, `CONTRIBUTING.md`, issue and pull-request templates.
+
+### Changed
+- README rewritten for people who have never seen Cadre: quick start, measured numbers,
+  limitations.
+
 ## 1.0.0 — unreleased
 
 Cadre can now **finish an existing project** as well as build a new one, on free keys only, and it

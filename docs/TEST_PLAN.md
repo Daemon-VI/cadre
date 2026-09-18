@@ -86,6 +86,21 @@ the `..` tests exercise.
 | NFR-11 honest forecasts | `test_forecast::test_no_history_is_labelled_estimated`, `…measured_history_uses_median_and_p90` | M7 ✅ |
 | Migration of a v0.1 database | `test_migration::test_v01_database_opens_and_keeps_rows` | M6 ✅ |
 
+## Distribution traceability (D0, 2026-09-18)
+
+| Requirement | Test or check |
+|---|---|
+| AC-14.1 licence, no copyleft | `tools/check_licences.py` (CI `hygiene`); `test_distribution::test_licence_policy_flags_copyleft` |
+| AC-14.2 three OSs × two Pythons | CI `test` matrix (`.github/workflows/ci.yml`) |
+| AC-14.3 gitleaks, private user name | CI `hygiene` (gitleaks-action, `tools/check_history.py`); `test_history_check_patterns_catch_what_they_guard` |
+| AC-14.4 owner identity on every commit | `tools/check_history.py` (CI `hygiene`) |
+| AC-14.5 scheduler on three OSs | `test_linux_plan_is_a_systemd_user_timer`, `test_macos_plan_is_a_launchd_agent`, `test_apply_writes_runs_and_removes`, `test_every_minutes_is_bounded`; CI runs `systemd-analyze verify` / `plutil -lint` on the generated files |
+| AC-14.6 headless keys | `test_no_keyring_means_env_only` |
+| AC-14.7 `--allowed-host` | `test_allowed_host_names_are_exact`, `test_an_allowed_host_is_accepted_and_others_still_refused`, `test_serve_passes_allowed_hosts_and_refuses_wildcards` |
+| AC-15.1 `/api/v1` and the alias share one lock | `test_v1_and_the_alias_share_one_lock`; `test_api.py` now calls `/api/v1` |
+| AC-15.2 OpenAPI snapshot | `test_openapi_snapshot_pins_the_v1_contract` (`tests/snapshots/openapi-v1.json`, 24 paths) |
+| AC-16.1 wheel runs a demo | `tools/wheel_smoke.py` (CI `wheel`, Ubuntu and Windows) |
+
 ## Live regressions (M5, 2026-09-17)
 
 Each is a test built from what a real model or provider did:
@@ -125,5 +140,5 @@ Each is a test built from what a real model or provider did:
 - The dashboard in a browser (the Chrome extension was not connected on 2026-09-16 or 2026-09-17).
 - `cadre provider add` against a live endpoint (hidden prompt, keyring write on Windows).
 - Concurrent writers: a CLI run and a server writing the same SQLite file at high rates.
-- CI: `.github/workflows` not added — the private remote exists (2026-09-18), but the `gh` token
-  lacks the `workflow` scope needed to push one.
+- CI: `.github/workflows/ci.yml` is written (2026-09-18), but it has never run. It can't be pushed
+  until Rithik grants the `gh` token the `workflow` scope, so Linux and macOS have never run the suite.

@@ -1,0 +1,33 @@
+name: Bug report
+description: Something Cadre did that it shouldn't have (for security problems use private reporting — see SECURITY.md)
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "**Never paste an API key**, even a revoked one. Redact anything that looks like `gsk_…`, `AIza…` or `sk-…`."
+  - type: input
+    id: version
+    attributes:
+      label: Cadre version and OS
+      placeholder: "cadre 1.1.0 · Windows 11 / Ubuntu 24.04 / macOS 15"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The command you ran (org, flags), and whether it reproduces with `--demo`.
+    validations:
+      required: true
+  - type: textarea
+    id: events
+    attributes:
+      label: Relevant events or output
+      description: "`cadre show <run-id> --events` output around the failure (keys are redacted by Cadre, but check anyway)."
+      render: text

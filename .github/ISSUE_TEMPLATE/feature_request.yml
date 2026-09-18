@@ -1,0 +1,20 @@
+name: Feature request
+description: Something Cadre should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and where does Cadre get in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+  - type: textarea
+    id: cost
+    attributes:
+      label: Token and quota cost
+      description: Free tiers cap tokens per minute. Would this add prompt tokens to every call (a new tool, more context)? Roughly how many?
