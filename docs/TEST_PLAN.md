@@ -100,6 +100,13 @@ the `..` tests exercise.
 | AC-15.1 `/api/v1` and the alias share one lock | `test_v1_and_the_alias_share_one_lock`; `test_api.py` now calls `/api/v1` |
 | AC-15.2 OpenAPI snapshot | `test_openapi_snapshot_pins_the_v1_contract` (`tests/snapshots/openapi-v1.json`, 24 paths) |
 | AC-16.1 wheel runs a demo | `tools/wheel_smoke.py` (CI `wheel`, Ubuntu and Windows) |
+| AC-16.2…16.4 PyPI, standalone builds, image | `release.yml`: tag = version check, TestPyPI → PyPI, `packaging/build_binary.py` smoke (`--version` + demo) on three OSs, image smoke (uid 10001, demo run) |
+| AC-16.3 frozen-build behaviour | `test_a_frozen_build_runs_checks_with_the_python_on_path`, `test_version_flag` |
+| AC-17.1 five tools, none can approve | `test_mcp::test_exactly_five_tools_and_none_can_approve` |
+| AC-17.2 client of `cadre serve`, autostart | `test_autostart_starts_serve_when_nothing_answers`; `tools/mcp_smoke.py` (real stdio) |
+| AC-17.3 approvals stay with the human | `test_a_run_waits_for_a_human_and_mcp_cannot_open_the_gate` |
+| AC-17.4 project default | `test_start_run_defaults_to_the_hosts_first_root` (roots round-trip, cwd repo, none, `""`) |
+| AC-17.5 no token in results | `test_a_run_waits_for_a_human_and_mcp_cannot_open_the_gate`; `tools/mcp_smoke.py` |
 
 ## Live regressions (M5, 2026-09-17)
 

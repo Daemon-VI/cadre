@@ -241,7 +241,10 @@ with local paths generalised.
   outlive the editor.
 - **AC-17.3** No approval of any kind can be granted over MCP; a waiting run's status names
   `cadre approve <id>` and the dashboard.
-- **AC-17.4** `cadre_start_run` defaults the project to the host's first workspace root.
+- **AC-17.4** `cadre_start_run` defaults the project to the host's first workspace root: MCP roots
+  when the host declares them, else the folder the server was started in when it is a git
+  repository; `project: ""` means a fresh workspace (amended 2026-09-18: roots are deprecated in
+  the MCP 2026-07-28 spec).
 - **AC-17.5** The API token never appears in a tool result.
 
 ### FR-18 GitHub Action

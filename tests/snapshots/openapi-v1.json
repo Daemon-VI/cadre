@@ -1277,6 +1277,7 @@
   },
   "/api/v1/runs/{rid}/events": {
    "get": {
+    "description": "`tail=N` returns the last N events instead of paging forward from `after`.",
     "operationId": "events_api_v1_runs__rid__events_get",
     "parameters": [
      {
@@ -1305,6 +1306,16 @@
       "schema": {
        "default": 500,
        "title": "Limit",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "tail",
+      "required": false,
+      "schema": {
+       "default": 0,
+       "title": "Tail",
        "type": "integer"
       }
      }

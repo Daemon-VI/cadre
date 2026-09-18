@@ -31,9 +31,12 @@ def _check_every(every_minutes: int) -> None:
 def job_argv(windowless: bool = False) -> list[str]:
     """This environment's interpreter, this Cadre, this CADRE_HOME."""
     exe = Path(sys.executable)
-    if windowless and exe.with_name("pythonw.exe").exists():
-        exe = exe.with_name("pythonw.exe")
-    argv = [str(exe), "-m", "cadre.scheduled"]
+    if getattr(sys, "frozen", False):  # a standalone build: cadre itself, no `-m`
+        argv = [str(exe), "scheduled-run"]
+    else:
+        if windowless and exe.with_name("pythonw.exe").exists():
+            exe = exe.with_name("pythonw.exe")
+        argv = [str(exe), "-m", "cadre.scheduled"]
     home = os.environ.get("CADRE_HOME")
     return argv + [home] if home else argv
 
@@ -41,7 +44,9 @@ def job_argv(windowless: bool = False) -> list[str]:
 def resume_command() -> str:
     """The Windows job's command line: pythonw, because a python.exe or a cmd wrapper would flash
     a console every N minutes."""
-    return " ".join(f'"{a}"' if i in (0, 3) else a for i, a in enumerate(job_argv(windowless=True)))
+    argv = job_argv(windowless=True)
+    head = 3 if argv[1] == "-m" else 2  # quote the executable and CADRE_HOME, not the flags
+    return " ".join(f'"{a}"' if i in (0, head) else a for i, a in enumerate(argv))
 
 
 # ---------------------------------------------------------------- Windows (Task Scheduler)

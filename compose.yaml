@@ -1,0 +1,26 @@
+# Cadre in a container (FR-16.4). Put keys in a `.env` file next to this one (never commit it):
+#   GROQ_API_KEY=...
+#   GEMINI_API_KEY=...
+# then:
+#   docker compose up -d
+#   docker compose exec cadre cadre provider add groq     # picks the key up from the environment
+#   docker compose exec cadre cadre ui --print            # dashboard link with the token in the fragment
+services:
+  cadre:
+    image: ghcr.io/daemon-vi/cadre:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"   # loopback on the host; reach it remotely through an SSH tunnel or Tailscale
+    volumes:
+      - cadre-data:/data
+      # project mode: mount a repository and run with --project /work/<name>
+      # - ./my-repo:/work/my-repo
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    # Behind a Tailscale sidecar or a reverse proxy, name the host it will be reached as:
+    # command: ["serve", "--host", "0.0.0.0", "--allowed-host", "cadre.your-tailnet.ts.net"]
+
+volumes:
+  cadre-data:

@@ -33,6 +33,10 @@ dependencies = [
     "uvicorn>=0.30",
 ]
 
+[project.optional-dependencies]
+# `cadre mcp` (FR-17): the official SDK brings cryptography, OpenTelemetry and more, so it is opt-in
+mcp = ["mcp>=2.2,<3"]
+
 [project.urls]
 Homepage = "https://github.com/Daemon-VI/cadre"
 Source = "https://github.com/Daemon-VI/cadre"
@@ -52,6 +56,7 @@ module-name = "cadre"  # the distribution is cadre-ai (`cadre` is taken on PyPI)
 
 [dependency-groups]
 dev = [
+    "mcp>=2.2,<3",
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "ruff>=0.5",

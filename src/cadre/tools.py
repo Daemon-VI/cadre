@@ -14,6 +14,7 @@ refusal is shown to the model as an observation.
 from __future__ import annotations
 
 import asyncio
+import shutil
 import subprocess
 import sys
 import time
@@ -219,9 +220,18 @@ class CheckResult:
                 "output_tail": self.output[-1500:]}
 
 
+def python_for_checks() -> str:
+    """`{python}` means the interpreter Cadre runs under, so stdlib checks need no setup. A frozen
+    standalone build has no interpreter of its own (`sys.executable` is cadre itself), so there it
+    means the first Python on PATH."""
+    if getattr(sys, "frozen", False):
+        return shutil.which("python3") or shutil.which("python") or "python3"
+    return sys.executable
+
+
 def resolve_command(command: list[str]) -> list[str]:
-    """`{python}` means the interpreter Cadre runs under, so stdlib checks need no setup."""
-    return [sys.executable if part == "{python}" else part for part in command]
+    python = python_for_checks()
+    return [python if part == "{python}" else part for part in command]
 
 
 def _run_blocking(cmd: list[str], cwd: Path, timeout: int) -> tuple[int | None, str, str]:

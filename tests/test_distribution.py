@@ -174,3 +174,25 @@ def test_licence_policy_flags_copyleft():
         assert lic.COPYLEFT.search(bad)
     for good in ("MIT", "BSD-3-Clause", "Apache-2.0 OR BSD-2-Clause", "ISC License (ISCL)"):
         assert not lic.COPYLEFT.search(good)
+
+
+# ---------------------------------------------------------------- FR-16.3 standalone builds
+def test_a_frozen_build_runs_checks_with_the_python_on_path(monkeypatch):
+    import sys
+
+    from cadre import tools
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(tools.shutil, "which", lambda name: f"/usr/bin/{name}" if name == "python3" else None)
+    assert tools.resolve_command(["{python}", "-m", "pytest"]) == ["/usr/bin/python3", "-m", "pytest"]
+    monkeypatch.setenv("CADRE_HOME", "/data")
+    assert scheduler.job_argv()[1:] == ["scheduled-run", "/data"]  # no `-m` inside a frozen build
+    assert scheduler.resume_command().endswith('scheduled-run "/data"')
+
+
+def test_version_flag():
+    from cadre import __version__
+    from cadre.cli import app
+
+    r = CliRunner().invoke(app, ["--version"])
+    assert r.exit_code == 0 and r.output.strip() == f"cadre {__version__}"

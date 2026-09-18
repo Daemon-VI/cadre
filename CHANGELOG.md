@@ -15,8 +15,18 @@ observed output, or a dated source.
 - CI: tests on Windows, macOS and Ubuntu with Python 3.12 and 3.13; licence, history and gitleaks
   checks; a wheel smoke test that runs a demo from a clean venv.
 - `SECURITY.md`, `CONTRIBUTING.md`, issue and pull-request templates.
+- `cadre mcp`: an MCP server over stdio for AI editors, with five tools: forecast, start run, run
+  status, usage, list orgs. It starts `cadre serve` when needed and can never grant an approval.
+  Optional extra: `uvx --from "cadre-ai[mcp]" cadre mcp`.
+- `GET /api/v1/runs/{id}/events?tail=N` returns the latest N events.
+- `cadre --version`.
+- Standalone builds (PyInstaller) and a container image (`ghcr.io/daemon-vi/cadre`, non-root,
+  `CADRE_HOME=/data`), both built and smoke-tested in `release.yml`. There is also a
+  `compose.yaml`.
 
 ### Changed
+- In a standalone build, `{python}` in a check means the first Python on PATH (the build has
+  no interpreter of its own), and the scheduler job calls `cadre scheduled-run`.
 - README rewritten for people who have never seen Cadre: quick start, measured numbers,
   limitations.
 

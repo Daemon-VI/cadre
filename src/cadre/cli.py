@@ -55,6 +55,20 @@ runs_app = typer.Typer(help="Recent runs, and cleanup of finished project worktr
 org_app = typer.Typer(help="Organisation files.", no_args_is_help=True)
 scheduler_app = typer.Typer(help="Resume parked runs on a schedule (asks before installing).",
                             no_args_is_help=True)
+
+
+def _print_version(value: bool) -> None:
+    if value:
+        con.print(f"cadre {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _root(version: bool = typer.Option(False, "--version", help="print the version and exit",
+                                       is_eager=True, callback=_print_version)) -> None:
+    """Cadre — run an organisation of AI agents on free model APIs."""
+
+
 app.add_typer(provider_app, name="provider")
 app.add_typer(org_app, name="org")
 app.add_typer(runs_app, name="runs")
@@ -821,6 +835,30 @@ def scheduler_uninstall() -> None:
     ok, out = scheduler.apply(scheduler.uninstall_plan())
     con.print(out, markup=False)
     raise typer.Exit(0 if ok else 1)
+
+
+@app.command("mcp")
+def mcp_cmd(port: int | None = typer.Option(None, help="the port `cadre serve` uses (default from config)")
+            ) -> None:
+    """Serve MCP over stdio for AI editors (Claude Code, VS Code, Cursor, Windsurf, Antigravity).
+
+    Starts `cadre serve` in the background when it is not running. Needs the `mcp` extra:
+    `uvx --from "cadre-ai[mcp]" cadre mcp`."""
+    try:
+        from .mcp_server import main as mcp_main
+    except ImportError:
+        print("error: `cadre mcp` needs the mcp extra; run it as "
+              '`uvx --from "cadre-ai[mcp]" cadre mcp` or `pip install "cadre-ai[mcp]"`', file=sys.stderr)
+        raise typer.Exit(1) from None
+    mcp_main(port)  # stdout carries the protocol from here on: print nothing
+
+
+@app.command("scheduled-run", hidden=True)
+def scheduled_run(home_dir: str | None = typer.Argument(None)) -> None:
+    """What the scheduled job runs in a standalone build (no `python -m` there)."""
+    from . import scheduled
+
+    raise typer.Exit(scheduled.main([home_dir] if home_dir else []))
 
 
 @scheduler_app.command("status")

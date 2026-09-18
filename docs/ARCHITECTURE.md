@@ -370,6 +370,21 @@ the tools can start and inspect runs (spending the owner's free quota — bounde
 cannot approve, cancel another tool's run silently, add providers or read keys; the token never
 appears in a result. **Rejected.** *HTTP/SSE transport* — a second listening port.
 
+**Amended 2026-09-18, found while building D2.**
+- **The SDK is an optional extra, `cadre-ai[mcp]`.** The official SDK (`mcp` 2.2.0, MIT) brings 52
+  packages including `cryptography`, OpenTelemetry and `pywin32`. That is too much for every
+  install. `uvx --from "cadre-ai[mcp]" cadre mcp` is the host command, and `cadre mcp` without the
+  extra says exactly that on stderr. All 52 licences pass `tools/check_licences.py`.
+- **Roots.** The MCP 2026-07-28 spec deprecates roots (SEP-2577), and a server-initiated
+  `roots/list` has no back-channel there (`NoBackChannelError`, observed). So the project default
+  comes from a `Resolve(ListRoots)` multi-round-trip, asked only when the host declares roots and
+  the call names no project. Otherwise it is the folder the server was started in, when that folder
+  is inside a git repository. Claude Code and the editors start stdio servers in the workspace
+  folder, and the host config snippets set it where a host allows. `project: ""` forces a fresh
+  workspace. The fallback is safe because project mode never writes to the owner's tree.
+- **The auto-started server** logs to `CADRE_HOME/logs/serve.log` and writes its PID to
+  `serve.pid`, because stdout belongs to the protocol.
+
 ### ADR-028 — Who may trigger the GitHub Action (FR-18)
 **Decision.** A composite action runs Cadre's CLI on the runner in project mode on the checkout,
 pushes `cadre/<run-id>` and opens a pull request. The example workflow triggers on the `cadre`

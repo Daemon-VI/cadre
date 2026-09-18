@@ -195,6 +195,13 @@ class Store:
             r["data"] = _loads(r["data"]) or {}
         return rows
 
+    def events_tail(self, rid: str, n: int) -> list[dict[str, Any]]:
+        """The last `n` events, oldest first (a status summary needs the end, not the start)."""
+        rows = self._all("SELECT * FROM events WHERE run_id=? ORDER BY seq DESC LIMIT ?", (rid, n))
+        for r in rows:
+            r["data"] = _loads(r["data"]) or {}
+        return rows[::-1]
+
     # ------------------------------------------------------------------ resume cache
     def put_step(self, rid: str, path: str, text: str, data: dict[str, Any]) -> None:
         self._x("INSERT OR REPLACE INTO step_results(run_id, path, text, data, ts) VALUES(?,?,?,?,?)",

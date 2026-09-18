@@ -442,8 +442,11 @@ def create_app(manager: RunManager, *, token: str | None = None,
         return PlainTextResponse(run_or_404(rid)["org_yaml"])
 
     @api.get("/runs/{rid}/events", dependencies=secured)
-    async def events(rid: str, after: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+    async def events(rid: str, after: int = 0, limit: int = 500, tail: int = 0) -> list[dict[str, Any]]:
+        """`tail=N` returns the last N events instead of paging forward from `after`."""
         run_or_404(rid)
+        if tail > 0:
+            return store.events_tail(rid, min(tail, 2000))
         return store.events(rid, after, min(max(limit, 1), 2000))
 
     @api.get("/runs/{rid}/stream", dependencies=secured)
