@@ -50,8 +50,8 @@ To unblock, Rithik either adds an allow rule for `Bash(uv run cadre:*)` via `/pe
 runs the commands himself with a leading `!`:
 
 ```
-! cd /c/Users/Rishi/cadre && uv run cadre provider add groq
-! cd /c/Users/Rishi/cadre && uv run cadre run decision-board "Should a two-person student team build a budgeting app or a note-taking app first?" --yes
+! cd cadre && uv run cadre provider add groq
+! cd cadre && uv run cadre run decision-board "Should a two-person student team build a budgeting app or a note-taking app first?" --yes
 ```
 
 Then, for each template (`software-team --allow-exec`, `decision-board`, `startup-company`,
@@ -108,6 +108,24 @@ role, independence, check results, repairs and 429s. Then `claim-auditor`, versi
   data, domain allow lists and size caps.
 - **M16 — hosted deployment.** Dockerfile, optional Postgres, TLS guidance, M13's auth in front —
   never before M12 and M13.
+
+## Distribution track D0–D7 (v1.0 → v1.1, added 2026-09-18)
+
+`PROMPT_DISTRIBUTION.md`. Separate from the M numbers. Every front end is a thin client of the one
+engine (ADR-024). Stops for Rithik: making the repo public, the first publish to each channel,
+anything that costs money, installing software, widening his GitHub login, creating tokens, and
+the D6 decision.
+
+| # | Step | Closes | Status |
+|---|---|---|---|
+| **D0** | Open-source readiness: Apache-2.0, README for strangers, community files, CI matrix, cross-platform scheduler, `--allowed-host`, history/privacy scans, `/api/v1` | FR-14, FR-15 | in progress |
+| **D1** | Package the engine: wheel smoke test, PyPI trusted publishing (`cadre-ai`), PyInstaller builds, GHCR image | FR-16 | — |
+| **D2** | MCP server (`cadre mcp`, five tools, no approvals over MCP) | FR-17 | — |
+| **D3** | GitHub Action (project mode on the checkout → PR; trusted triggers only) | FR-18 | — |
+| **D4** | VS Code extension, published to the Marketplace and Open VSX | FR-19 | — |
+| **D5** | Docs site on GitHub Pages | FR-20 | — |
+| **D6** | Desktop app (Tauri 2 + PyInstaller sidecar) — only on Rithik's yes | FR-21 | gate |
+| **D7** | Hosted website — **not in this programme**: a public server would run strangers' model-written code and hold their keys, so it stays behind M12 (sandboxed checks) and M13 (user accounts) | — | deferred |
 
 ## Deferred, and why
 

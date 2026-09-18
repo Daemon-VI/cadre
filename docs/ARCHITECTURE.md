@@ -318,3 +318,81 @@ results are data not instructions; finish with a plain answer). User: goal, task
 listing (≤ 40 entries), last 12 team notes, plus pattern-specific context (feedback, other
 members' proposals labelled A/B/C, dependency outputs). Strict-JSON asks append the exact
 schema and get one repair turn.
+
+## Distribution (v1.0 → v1.1, added 2026-09-18)
+
+`PROMPT_DISTRIBUTION.md` asked for these to start at ADR-023; that number was already taken by the
+M5 lessons, so they start at ADR-024.
+
+### ADR-024 — One engine; every front end is a thin client of its API (FR-17…21)
+**Decision.** The Python engine and `cadre serve` stay the only implementation of routing, quota,
+runs and approvals. The MCP server, the GitHub Action, the VS Code extension and a desktop shell
+call the local API (or, for the Action, the CLI on a throwaway runner); none re-implements engine
+logic in another language. A front end that needs something the API lacks gets it added to the
+API with tests first. **Why.** Quota arithmetic and park/resume are the product; a second copy in
+TypeScript would drift within a release. **Threat model.** Each front end becomes another holder
+of the API token, so each reads it from `CADRE_HOME/token` at the moment of use, keeps it in
+memory, and never prints, logs or forwards it (webviews and MCP tool results never see it).
+**Rejected.** *An extension that calls providers directly* — two routers, two quota books, keys
+in the editor.
+
+### ADR-025 — The API is versioned at `/api/v1`, pinned by an OpenAPI snapshot (FR-15)
+**Decision.** Every endpoint is registered once on a router and mounted at `/api/v1`; the
+unversioned `/api/*` stays as an alias hidden from the schema until 2.0, so 1.0 scripts keep
+working. `tests/snapshots/openapi-v1.json` holds the schema; a test fails on any difference until
+it is regenerated with `CADRE_UPDATE_SNAPSHOTS=1`, which makes an API change a reviewed diff. The
+schema is not served (`openapi_url=None` stays): clients are ours. **Threat model.** Two mounts
+must not mean two policies: both share the same dependencies (bearer token) and the same Host
+middleware, and a test checks a v1 call without a token gets 401.
+**Rejected.** *Header versioning* — invisible in logs and awkward in `curl`.
+
+### ADR-026 — How the engine is delivered: `uvx` first, a bundled binary second (FR-16)
+**Decision.** The primary channel is PyPI `cadre-ai`, run with `uvx cadre-ai …` (one tool, cached,
+isolated, no global install) or `pip install cadre-ai`. Front ends call `cadre` if it is on PATH,
+else `uvx cadre-ai`. For people without Python, PyInstaller one-folder builds are attached to each
+GitHub Release, and a GHCR image serves containers. Everything heavy (PyInstaller matrix, Docker,
+Electron tests) is built in CI, never on the 7.7 GB laptop. Publishing uses PyPI trusted
+publishing (OIDC), so no PyPI token exists anywhere. **Threat model.** A published package runs as
+the user who installs it: releases come only from a tag on `main` through `release.yml` in a
+protected `pypi` environment; unsigned binaries trigger SmartScreen/Gatekeeper and the README says
+so. **Rejected.** *Signing certificates now* — they cost money; Rithik's decision.
+
+### ADR-027 — MCP over stdio, and no approvals over MCP (FR-17)
+**Decision.** `cadre mcp` speaks MCP over stdio using the official Python SDK, with five tools,
+because every schema is replayed in the host's context too. It is a client of `cadre serve`
+(started detached when none answers), so a run survives the editor closing. **No approval of any
+kind is granted over MCP** — neither `exec` approvals (they let model-written code run) nor gate
+approvals: the caller is itself a model, and a gate that a model can open for another model's work
+is not a gate. A run waiting on approval reports `cadre approve <id>` and the dashboard URL.
+`cadre_start_run` may ask for `allow_exec` (checks still wait for a human's approval) but never
+`auto_approve`. **Threat model.** Prompt injection in the host's context can call any tool, so
+the tools can start and inspect runs (spending the owner's free quota — bounded by budgets) but
+cannot approve, cancel another tool's run silently, add providers or read keys; the token never
+appears in a result. **Rejected.** *HTTP/SSE transport* — a second listening port.
+
+### ADR-028 — Who may trigger the GitHub Action (FR-18)
+**Decision.** A composite action runs Cadre's CLI on the runner in project mode on the checkout,
+pushes `cadre/<run-id>` and opens a pull request. The example workflow triggers on the `cadre`
+label or a `/cadre <goal>` comment, and its first step exits unless `author_association` is
+`OWNER`, `MEMBER` or `COLLABORATOR`. Permissions: `contents: write`, `pull-requests: write`,
+`issues: write`, nothing else. `allow-exec` defaults to on because the runner is a throwaway VM.
+Keys arrive as repository secrets in environment variables (`CADRE_NO_KEYRING=1`). **Threat
+model.** An issue body is untrusted text that becomes the goal: only trusted associations can
+start a run, the goal is passed through an environment variable (never interpolated into a shell
+line), the PR is a proposal a human merges, and the branch never targets the default branch
+directly. Fork pull requests get no secrets by GitHub's design and cannot trigger it.
+**Rejected.** *`pull_request_target`* — runs with secrets on untrusted code.
+
+### ADR-029 — How the extension finds the server and handles the token (FR-19)
+**Decision.** The VS Code extension calls `GET /api/v1/health` on the configured port (default
+8765); if nothing answers it starts `cadre serve` (PATH) or `uvx cadre-ai serve`, detached, and
+polls until healthy. It reads the token from `CADRE_HOME/token` (default `~/.cadre/token`) when
+it needs it and keeps it in the extension host only; webviews get data by `postMessage`, run
+with a CSP nonce, and insert model text with `textContent`. Adding a provider opens the integrated
+terminal on `cadre provider add <id>`, so the key goes into the CLI's hidden prompt. An `exec`
+approval is a modal that shows the check's exact command from the org file. It publishes to both
+the VS Code Marketplace and Open VSX (Antigravity, Cursor and Windsurf install from Open VSX).
+**Threat model.** Other extensions share the extension host; the token is never stored in VS Code
+settings or `SecretStorage` copies, and never shown in UI. Webviews are the XSS surface: no
+`innerHTML`, no remote resources. **Rejected.** *Token in settings* — synced to the cloud by
+Settings Sync.

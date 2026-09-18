@@ -2,7 +2,7 @@
 
 _Written 2026-09-17 from Rithik's restated idea. Written for Claude Opus in Claude Code._
 
-**How to use it:** open a terminal in `C:\Users\Rishi\cadre`, run `claude --model opus`, and say:
+**How to use it:** open a terminal in the repository root, run `claude --model opus`, and say:
 _"Read docs/MASTER_PROMPT.md and follow it."_ A session may finish one milestone or several.
 Each phase writes its results into `docs/`, so a cleared session continues from
 `docs/PROJECT_STATE.md`.
@@ -217,7 +217,7 @@ Every milestone follows the same loop:
 First check `uv run cadre provider list`. If no provider has a key, stop and ask Rithik to run
 these himself (the key prompt is hidden, and keys go into Windows Credential Manager):
 ```
-cd C:\Users\Rishi\cadre
+cd cadre
 uv run cadre provider add groq
 uv run cadre provider add gemini
 uv run cadre provider add openrouter

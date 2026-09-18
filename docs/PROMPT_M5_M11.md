@@ -3,7 +3,7 @@
 _Written 2026-09-17, after M6–M10 were built and verified offline (150 tests)._
 
 **Before starting:** in Claude Code, add `Bash(uv run cadre:*)` under `/permissions`. Then open a
-terminal in `C:\Users\Rishi\cadre`, run `claude --model opus`, and say:
+terminal in the repository root, run `claude --model opus`, and say:
 _"Read docs/PROMPT_M5_M11.md and follow it."_
 
 ---

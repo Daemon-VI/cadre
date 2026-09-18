@@ -403,5 +403,5 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 6. After v1.0: `ROADMAP.md` M12 (container runner for checks).
 
 ## Environment
-`cd C:\Users\Rishi\cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`
+`cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`
 overrides). Git: branch `main`, remote `origin` = private `Daemon-VI/cadre` (commit, then push).
