@@ -106,6 +106,10 @@ the `..` tests exercise.
 | AC-17.2 client of `cadre serve`, autostart | `test_autostart_starts_serve_when_nothing_answers`; `tools/mcp_smoke.py` (real stdio) |
 | AC-17.3 approvals stay with the human | `test_a_run_waits_for_a_human_and_mcp_cannot_open_the_gate` |
 | AC-17.4 project default | `test_start_run_defaults_to_the_hosts_first_root` (roots round-trip, cwd repo, none, `""`) |
+| AC-18.1…18.3 action: PR body, parked comment, trusted triggers, least permissions, goal only via env | `test_action_formats_outputs_body_and_parked_comment` |
+| `cadre provider add-from-env` (free presets only, key stays in the environment) | `test_add_from_env_adds_free_providers_only` |
+| `cadre run --result-json` | `test_result_json_for_scripts` |
+| MCP project default order (`CADRE_PROJECT`, `CLAUDE_PROJECT_DIR`, roots, cwd repo) | `test_project_vars_come_before_roots_and_cwd` |
 | AC-17.5 no token in results | `test_a_run_waits_for_a_human_and_mcp_cannot_open_the_gate`; `tools/mcp_smoke.py` |
 
 ## Live regressions (M5, 2026-09-17)

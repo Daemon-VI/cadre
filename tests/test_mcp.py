@@ -97,6 +97,8 @@ async def test_a_run_waits_for_a_human_and_mcp_cannot_open_the_gate(home):
 
 
 async def test_start_run_defaults_to_the_hosts_first_root(home, tmp_path, monkeypatch):
+    for var in mcp_server.PROJECT_VARS:  # Claude Code sets CLAUDE_PROJECT_DIR for its own children
+        monkeypatch.delenv(var, raising=False)
     server, _ = wire(home)
     sent = {}
 
@@ -163,3 +165,18 @@ def test_events_are_one_short_line_each():
     line = mcp_server.format_event({"kind": "agent.finished", "step": "s1", "agent": "a",
                                     "data": {"text": "x" * 500, "model": "p/m"}})
     assert line.startswith("agent.finished [s1/a] text=") and len(line) <= 200
+
+
+def test_project_vars_come_before_roots_and_cwd(tmp_path, monkeypatch):
+    for var in mcp_server.PROJECT_VARS:
+        monkeypatch.delenv(var, raising=False)
+    roots = ListRootsResult(roots=[Root(uri=(tmp_path / "root").as_uri())])
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "claude"))
+    assert mcp_server.default_project(roots) == str(tmp_path / "claude")
+    monkeypatch.setenv("CADRE_PROJECT", str(tmp_path / "explicit"))
+    assert mcp_server.default_project(roots) == str(tmp_path / "explicit")
+    monkeypatch.delenv("CADRE_PROJECT")
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR")
+    assert Path(mcp_server.default_project(roots)) == tmp_path / "root"
+    (tmp_path / "root").mkdir()
+    assert mcp_server.default_project(None, cwd=tmp_path / "root") is None  # not a repository

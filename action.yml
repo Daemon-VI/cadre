@@ -1,0 +1,147 @@
+name: Cadre — finish this project
+description: A team of AI agents on free model keys works on this repository and opens a pull request.
+author: Daemon-VI
+branding:
+  icon: users
+  color: purple
+
+# FR-18, ADR-028. The engine is installed from this action's own source (so the action and the
+# engine are the same version), keys come from repository secrets as environment variables, and
+# the result is a pull request — never a push to the default branch.
+
+inputs:
+  goal:
+    description: What the team should achieve. Passed through an environment variable, never into a shell line.
+    required: true
+  org:
+    description: The organisation to run (`project-finisher` works on this repository).
+    default: project-finisher
+  allow-exec:
+    description: Let the org's checks run model-written code (the runner is a throwaway machine).
+    default: "true"
+  issue-number:
+    description: Issue or pull request to comment on (forecast, outcome). Empty for none.
+    default: ""
+  base:
+    description: Branch the pull request targets. Default is the repository's default branch.
+    default: ""
+  github-token:
+    description: Token for the comment, the push and the pull request.
+    default: ${{ github.token }}
+  git-user-name:
+    description: Commit author name. Default is the person who triggered the run.
+    default: ${{ github.actor }}
+  git-user-email:
+    description: Commit author email. Default is that person's GitHub noreply address.
+    default: ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
+
+outputs:
+  run-id:
+    description: The Cadre run id.
+    value: ${{ steps.run.outputs.run-id }}
+  status:
+    description: succeeded, parked, unapproved, failed, …
+    value: ${{ steps.run.outputs.status }}
+  branch:
+    description: The branch Cadre committed to (`cadre/<run-id>`).
+    value: ${{ steps.run.outputs.branch }}
+  pr-url:
+    description: The pull request, when one was opened.
+    value: ${{ steps.pr.outputs.url }}
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v10
+      with:
+        python-version: "3.12"
+
+    - name: Install Cadre from this action's source
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: uv tool install --quiet "$ACTION_PATH"
+
+    - name: Add the providers whose keys are in the environment
+      shell: bash
+      env:
+        CADRE_HOME: ${{ runner.temp }}/cadre-home
+        CADRE_NO_KEYRING: "1"
+      run: cadre provider add-from-env --no-test
+
+    - name: Forecast
+      id: forecast
+      shell: bash
+      env:
+        CADRE_HOME: ${{ runner.temp }}/cadre-home
+        CADRE_NO_KEYRING: "1"
+        GOAL: ${{ inputs.goal }}
+        ORG: ${{ inputs.org }}
+        ISSUE: ${{ inputs.issue-number }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        cadre forecast "$ORG" "$GOAL" --project "$GITHUB_WORKSPACE" | tee "$RUNNER_TEMP/forecast.txt"
+        if [ -n "$ISSUE" ]; then
+          { echo "**Cadre forecast** for \`$ORG\`:"; echo; echo '```'; cat "$RUNNER_TEMP/forecast.txt"; echo '```'; } \
+            > "$RUNNER_TEMP/forecast.md"
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/forecast.md"
+        fi
+
+    - name: Run
+      id: run
+      shell: bash
+      env:
+        CADRE_HOME: ${{ runner.temp }}/cadre-home
+        CADRE_NO_KEYRING: "1"
+        GOAL: ${{ inputs.goal }}
+        ORG: ${{ inputs.org }}
+        ALLOW_EXEC: ${{ inputs.allow-exec }}
+        GIT_NAME: ${{ inputs.git-user-name }}
+        GIT_EMAIL: ${{ inputs.git-user-email }}
+      run: |
+        # commits on cadre/<run-id> are attributed to the person who asked for the run
+        git config user.name "$GIT_NAME"
+        git config user.email "$GIT_EMAIL"
+        flags=(--project "$GITHUB_WORKSPACE" --yes --quiet --no-result --result-json "$RUNNER_TEMP/result.json")
+        [ "$ALLOW_EXEC" = "true" ] && flags+=(--allow-exec)
+        set +e
+        cadre run "$ORG" "$GOAL" "${flags[@]}"
+        code=$?
+        set -e
+        if [ -f "$RUNNER_TEMP/result.json" ]; then
+          python3 "$GITHUB_ACTION_PATH/action/pr_body.py" outputs "$RUNNER_TEMP/result.json" >> "$GITHUB_OUTPUT"
+        else
+          echo "status=not-started" >> "$GITHUB_OUTPUT"
+        fi
+        echo "cadre exited $code"
+        exit 0  # the outcome is reported below; a failed run still gets its comment
+
+    - name: Push the branch and open a pull request
+      id: pr
+      if: steps.run.outputs.status == 'succeeded' || steps.run.outputs.status == 'unapproved'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        BRANCH: ${{ steps.run.outputs.branch }}
+        BASE: ${{ inputs.base || github.event.repository.default_branch }}
+        GOAL: ${{ inputs.goal }}
+      run: |
+        git push origin "$BRANCH"
+        python3 "$GITHUB_ACTION_PATH/action/pr_body.py" body "$RUNNER_TEMP/result.json" > "$RUNNER_TEMP/pr.md"
+        title="Cadre: $(printf '%s' "$GOAL" | head -c 60)"
+        url=$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$BASE" --head "$BRANCH" \
+              --title "$title" --body-file "$RUNNER_TEMP/pr.md")
+        echo "url=$url" >> "$GITHUB_OUTPUT"
+
+    - name: Report on the issue
+      if: always() && inputs.issue-number != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        ISSUE: ${{ inputs.issue-number }}
+        PR_URL: ${{ steps.pr.outputs.url }}
+      run: |
+        [ -f "$RUNNER_TEMP/result.json" ] || { gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" \
+          --body "Cadre did not start; see the workflow log."; exit 0; }
+        python3 "$GITHUB_ACTION_PATH/action/pr_body.py" comment "$RUNNER_TEMP/result.json" > "$RUNNER_TEMP/comment.md"
+        gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"

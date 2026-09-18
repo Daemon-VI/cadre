@@ -196,3 +196,67 @@ def test_version_flag():
 
     r = CliRunner().invoke(app, ["--version"])
     assert r.exit_code == 0 and r.output.strip() == f"cadre {__version__}"
+
+
+def test_add_from_env_adds_free_providers_only(home, monkeypatch):
+    from cadre.cli import app
+    from cadre.presets import PRESETS
+
+    for p in PRESETS.values():
+        if p.env:
+            monkeypatch.delenv(p.env, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_" + "f" * 40)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-" + "f" * 40)  # paid: never added this way
+    r = CliRunner().invoke(app, ["provider", "add-from-env", "--no-test"])
+    assert r.exit_code == 0, r.output
+    ids = [p.id for p in home.load_config().providers]
+    assert ids == ["groq"] and "gsk_" not in r.output
+    raw = (home.root / "config.yaml").read_text(encoding="utf-8")
+    assert "gsk_" not in raw  # the key itself stays in the environment
+
+
+def test_result_json_for_scripts(home, tmp_path):
+    from cadre.cli import app
+
+    out = tmp_path / "result.json"
+    r = CliRunner().invoke(app, ["run", "decision-board", "Open a second office?", "--demo", "--quiet",
+                                 "--result-json", str(out)])
+    assert r.exit_code == 0, r.output
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["status"] == "succeeded" and data["totals"]["calls"] > 0 and data["usage"]
+    assert set(data) >= {"id", "result", "branch", "commits", "diff_stat", "resume_at_ist"}
+
+
+# ---------------------------------------------------------------- FR-18 GitHub Action
+def test_action_formats_outputs_body_and_parked_comment(home, tmp_path):
+    import yaml
+
+    from cadre.cli import app
+
+    out = tmp_path / "result.json"
+    CliRunner().invoke(app, ["run", "decision-board", "Open a second office?", "--demo", "--quiet",
+                             "--result-json", str(out)])
+    pr = _tool_at("action", "pr_body")
+    r = json.loads(out.read_text(encoding="utf-8"))
+    assert pr.outputs(r).splitlines()[1] == "status=succeeded"
+    body = pr.body(r)
+    assert "| **total** |" in body and r["id"] in body and len(body) < 65_536
+    r.update(status="parked", resume_at_ist="19 Sep 05:30 IST")
+    assert "19 Sep 05:30 IST" in pr.comment(r)
+    # the example workflow only lets trusted people trigger it, with the least permissions
+    wf = yaml.safe_load((Path(__file__).parents[1] / "examples" / "github-action" / "cadre.yml").read_text())
+    cond = wf["jobs"]["cadre"]["if"]
+    assert cond.count('["OWNER","MEMBER","COLLABORATOR"]') == 2 and "author_association" in cond
+    assert wf["permissions"] == {"contents": "write", "pull-requests": "write", "issues": "write"}
+    action = yaml.safe_load((Path(__file__).parents[1] / "action.yml").read_text(encoding="utf-8"))
+    runs = "\n".join(step.get("run", "") for step in action["runs"]["steps"])
+    assert "${{ inputs.goal }}" not in runs  # the goal reaches shells only through env vars
+
+
+def _tool_at(folder, name):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).parents[1] / folder / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod

@@ -121,7 +121,7 @@ the D6 decision.
 | **D0** | Open-source readiness: Apache-2.0, README for strangers, community files, CI matrix, cross-platform scheduler, `--allowed-host`, history/privacy scans, `/api/v1` | FR-14, FR-15 | built 2026-09-18; CI written but not yet run (needs the `workflow` scope); public switch waits on the D0 gate |
 | **D1** | Package the engine: wheel smoke test, PyPI trusted publishing (`cadre-ai`), PyInstaller builds, GHCR image | FR-16 | built 2026-09-18; wheel smoke passes locally; `release.yml` not yet run (workflow scope); first publish needs Rithik |
 | **D2** | MCP server (`cadre mcp`, five tools, no approvals over MCP) | FR-17 | built 2026-09-18; verified over real stdio; host checks pending |
-| **D3** | GitHub Action (project mode on the checkout → PR; trusted triggers only) | FR-18 | — |
+| **D3** | GitHub Action (project mode on the checkout → PR; trusted triggers only) | FR-18 | built 2026-09-18 (`action.yml`, example workflow); the real test on a demo repo needs the workflow scope, the repo made public, Rithik's yes for `Daemon-VI/cadre-action-demo` and his secrets |
 | **D4** | VS Code extension, published to the Marketplace and Open VSX | FR-19 | — |
 | **D5** | Docs site on GitHub Pages | FR-20 | — |
 | **D6** | Desktop app (Tauri 2 + PyInstaller sidecar) — only on Rithik's yes | FR-21 | gate |

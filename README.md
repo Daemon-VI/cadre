@@ -79,6 +79,32 @@ uv run cadre run decision-board "Should we open a second office?" --demo
 uv run cadre run software-team "a word counter" --demo --allow-exec
 ```
 
+## Front ends
+
+Cadre is one engine (`cadre serve`, a local API at `/api/v1`), and each of these is a thin client
+of it (ADR-024):
+
+- **AI editors (MCP):** `uvx --from "cadre-ai[mcp]" cadre mcp` gives Claude Code, VS Code, Cursor,
+  Windsurf and Antigravity five tools: forecast, start a run, run status, usage and list orgs.
+  They can't approve anything. There's a config snippet for each host in
+  [`docs/MCP_HOSTS.md`](docs/MCP_HOSTS.md).
+- **GitHub Action:** label an issue `cadre` or comment `/cadre <goal>`. Cadre runs
+  `project-finisher` on the checkout and opens a pull request with its report and usage table.
+  Only the owner, members and collaborators can trigger it. Copy
+  [`examples/github-action/cadre.yml`](examples/github-action/cadre.yml) and add a free key as a
+  repository secret.
+- **VS Code extension** (Marketplace and Open VSX, so also Antigravity, Cursor and Windsurf): see
+  [`editors/vscode`](editors/vscode).
+- **Container:** `ghcr.io/daemon-vi/cadre`, non-root, state in `/data`, keys from environment
+  variables. See [`compose.yaml`](compose.yaml).
+- **Standalone downloads** for Windows, macOS and Linux are attached to each GitHub Release. They
+  are unsigned, so SmartScreen and Gatekeeper will warn. Checks that use `{python}` need a Python
+  on PATH.
+
+On a server, in CI or in a container with no keychain, set `CADRE_NO_KEYRING=1`, put keys in
+environment variables, and run `cadre provider add-from-env` to register every free provider
+whose key is present.
+
 ## Add a free model
 
 ```bash

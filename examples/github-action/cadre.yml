@@ -1,0 +1,59 @@
+# Copy to .github/workflows/cadre.yml in your repository (FR-18, ADR-028).
+#
+# Trigger: add the `cadre` label to an issue (the goal is the issue title and body), or comment
+# `/cadre <goal>` on an issue. Only the repository's OWNER, MEMBERs and COLLABORATORs can start a
+# run — strangers can't spend your keys or steer the agents. Fork pull requests never get secrets.
+#
+# Secrets: add at least one free key under Settings → Secrets and variables → Actions, for example
+# GROQ_API_KEY (console.groq.com) and GEMINI_API_KEY (aistudio.google.com).
+name: Cadre
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: cadre-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  cadre:
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'cadre' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)) ||
+      (github.event_name == 'issue_comment' && !github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/cadre ') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Goal from the issue or the comment
+        id: goal
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          if [ -n "$COMMENT" ]; then goal="${COMMENT#/cadre }"; else goal="$TITLE"$'\n\n'"$BODY"; fi
+          { echo "goal<<CADRE_EOF"; printf '%s\n' "$goal" | head -c 4000; echo; echo "CADRE_EOF"; } >> "$GITHUB_OUTPUT"
+
+      - uses: Daemon-VI/cadre@v1
+        with:
+          goal: ${{ steps.goal.outputs.goal }}
+          org: project-finisher
+          issue-number: ${{ github.event.issue.number }}
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

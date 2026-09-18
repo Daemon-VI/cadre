@@ -16,6 +16,7 @@ import re
 import sys
 import time
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -164,6 +165,13 @@ def provider_add(
                 fail(str(e))
             con.print(f"Key stored in the {where}.")
 
+    _complete_provider(h, preset, pc, test)
+
+
+def _complete_provider(h: Home, preset: str, pc, test: bool) -> None:
+    """Test the key, discover models when the preset lists none, and save the provider."""
+    p = PRESETS[preset]
+
     async def finish() -> None:
         prov = make_provider(pc, SecretStore())
         try:
@@ -192,6 +200,31 @@ def provider_add(
         con.print("Add models with [bold]cadre provider set-model[/].")
     if p.note:
         con.print(f"[dim]{p.note}[/]")
+
+
+@provider_app.command("add-from-env")
+def provider_add_from_env(test: bool = typer.Option(False, "--test/--no-test",
+                                                    help="check each key against its endpoint")) -> None:
+    """Add every free provider whose key is already in the environment (`CADRE_KEY_<ID>` or the
+    preset's usual variable). For CI runners and containers, where there is no keychain and no
+    one to type at a prompt. Paid presets are never added this way."""
+    h = home()
+    added = []
+    for name, p in PRESETS.items():
+        if p.local or not p.free or name == "custom":
+            continue
+        if not (os.environ.get(env_name(name)) or (p.env and os.environ.get(p.env))):
+            continue
+        try:
+            pc = provider_from_preset(name)
+        except ValueError as e:
+            con.print(f"[yellow]skipped {name}:[/] {e}")
+            continue
+        con.print(f"Using the key for {name} from the environment.")
+        _complete_provider(h, name, pc, test)
+        added.append(name)
+    if not added:
+        fail("no provider key found in the environment (e.g. GROQ_API_KEY, GEMINI_API_KEY)")
 
 
 @provider_app.command("key")
@@ -635,6 +668,8 @@ def run(
                                         help="leave approvals to the dashboard / `cadre approve`"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
     show_result: bool = typer.Option(True, "--result/--no-result"),
+    result_json: Path | None = typer.Option(None, "--result-json",
+                                            help="also write the outcome as JSON here (for CI and scripts)"),
 ) -> None:
     """Run an organisation on a goal, streaming what every agent does."""
     h = home()
@@ -661,7 +696,22 @@ def run(
         con.print(result["result"], markup=False)
         con.rule()
     _report(h, result)
+    if result_json:
+        _write_result_json(manager.store, result, result_json)
     raise typer.Exit(0 if result["status"] in ("succeeded", "parked") else 1)
+
+
+def _write_result_json(store: Store, run: dict[str, Any], path: Path) -> None:
+    """The outcome in one file: status, result, branch and usage (the GitHub Action reads it)."""
+    project = (run.get("summary") or {}).get("project") or {}
+    out = {"id": run["id"], "org": run.get("org"), "goal": run.get("goal"), "status": run["status"],
+           "error": run.get("error"), "result": run.get("result") or "",
+           "resume_at": run.get("resume_at"),
+           "resume_at_ist": ist(run["resume_at"]) if run.get("resume_at") else None,
+           "branch": project.get("branch") or run.get("branch"), "commits": project.get("commits", []),
+           "diff_stat": project.get("diff_stat", ""), "totals": store.usage_totals(run["id"]),
+           "usage": store.usage_by_agent(run["id"])}
+    path.write_text(json.dumps(out, indent=1), encoding="utf-8")
 
 
 @app.command()

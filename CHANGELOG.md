@@ -20,6 +20,13 @@ observed output, or a dated source.
   Optional extra: `uvx --from "cadre-ai[mcp]" cadre mcp`.
 - `GET /api/v1/runs/{id}/events?tail=N` returns the latest N events.
 - `cadre --version`.
+- A GitHub Action (`uses: Daemon-VI/cadre@v1`): label an issue `cadre` or comment `/cadre <goal>`,
+  and Cadre works on the checkout and opens a pull request with its report and usage. Only the
+  owner, members and collaborators can trigger it (`examples/github-action/cadre.yml`).
+- `cadre provider add-from-env` registers every free provider whose key is in the environment,
+  and `cadre run --result-json PATH` writes the outcome for scripts.
+- `docs/MCP_HOSTS.md`: config for Claude Code, VS Code, Cursor, Windsurf and Antigravity, each
+  checked against the host's docs on 2026-09-18.
 - Standalone builds (PyInstaller) and a container image (`ghcr.io/daemon-vi/cadre`, non-root,
   `CADRE_HOME=/data`), both built and smoke-tested in `release.yml`. There is also a
   `compose.yaml`.

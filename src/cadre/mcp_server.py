@@ -132,14 +132,25 @@ def workspace_roots(ctx: Context, project: str | None = None) -> ListRoots | Lis
     `roots/list` request has no back-channel there. A host that declares no roots capability, or a
     call that names its project, gets an empty answer instead of an error (-32021)."""
     caps = ctx.client_capabilities
-    if project is None and caps is not None and caps.roots is not None:
+    named = project is not None or any(os.environ.get(v) for v in PROJECT_VARS)
+    if not named and caps is not None and caps.roots is not None:
         return ListRoots()
     return ListRootsResult(roots=[])
 
 
+PROJECT_VARS = ("CADRE_PROJECT", "CLAUDE_PROJECT_DIR")
+
+
 def default_project(roots: ListRootsResult | None, cwd: Path | None = None) -> str | None:
-    """The host's first file root; else the folder this server was started in, when it is a git
-    repository (Claude Code and the editors start stdio servers in the workspace folder)."""
+    """Where a run works when the call names no project, first match wins (checked against each
+    host's docs on 2026-09-18):
+      1. `CADRE_PROJECT` — set it in the host config, e.g. `${workspaceFolder}` in VS Code / Cursor;
+      2. `CLAUDE_PROJECT_DIR` — Claude Code sets it for the servers it starts;
+      3. the host's first MCP root (VS Code and Claude Code answer; deprecated since 2026-07-28);
+      4. the folder this server was started in, when it is inside a git repository."""
+    for var in PROJECT_VARS:
+        if os.environ.get(var):
+            return os.environ[var]
     for root in (roots.roots if roots else []):
         path = path_from_uri(str(root.uri))
         if path:
