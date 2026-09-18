@@ -13,7 +13,6 @@ import asyncio
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 import webbrowser
@@ -799,37 +798,38 @@ def approve(approval_id: str, reject: bool = typer.Option(False, "--reject"),
 @scheduler_app.command("install")
 def scheduler_install(every: int = typer.Option(30, "--every", help="minutes between checks"),
                       yes: bool = typer.Option(False, "--yes", "-y")) -> None:
-    """Register a Windows Task Scheduler job that runs `cadre resume --due`."""
+    """Resume parked runs on a schedule: Task Scheduler (Windows), a systemd user timer (Linux) or
+    a launchd agent (macOS)."""
     from . import scheduler
 
-    args = scheduler.install_args(every)
-    con.print("This will register a scheduled task on this machine:", markup=False)
-    con.print("  " + subprocess.list2cmdline(args), markup=False)
+    plan = scheduler.install_plan(every)
+    con.print("This will register a scheduled job on this machine:", markup=False)
+    con.print(plan.describe(), markup=False)
     if not yes and not typer.confirm("Install it?", default=False):
         con.print("Not installed.")
         raise typer.Exit(1)
-    ok, out = scheduler.run(args)
+    ok, out = scheduler.apply(plan)
     con.print(out, markup=False)
     raise typer.Exit(0 if ok else 1)
 
 
 @scheduler_app.command("uninstall")
 def scheduler_uninstall() -> None:
-    """Remove the scheduled task."""
+    """Remove the scheduled job."""
     from . import scheduler
 
-    ok, out = scheduler.run(scheduler.uninstall_args())
+    ok, out = scheduler.apply(scheduler.uninstall_plan())
     con.print(out, markup=False)
     raise typer.Exit(0 if ok else 1)
 
 
 @scheduler_app.command("status")
 def scheduler_status() -> None:
-    """Show whether the scheduled task exists, and which parked runs are waiting."""
+    """Show whether the scheduled job exists, and which parked runs are waiting."""
     from . import scheduler
 
-    ok, out = scheduler.run(scheduler.status_args())
-    con.print(out if ok else "The scheduled task is not installed.", markup=False)
+    ok, out = scheduler.run(scheduler.status_command())
+    con.print(out if ok else "The scheduled job is not installed.", markup=False)
     for r in Store(home().db_path).parked():
         con.print(f"parked: {r['id']} ({r['org']}) resumes ~{ist(r['resume_at'])}", markup=False)
 
@@ -837,19 +837,26 @@ def scheduler_status() -> None:
 # ------------------------------------------------------------------ server
 @app.command()
 def serve(host: str = "127.0.0.1", port: int | None = None,
+          allowed_host: list[str] = typer.Option(  # noqa: B008
+              [], "--allowed-host", help="also accept this Host header (a Tailscale name, a "
+              "container's service name); repeatable, exact names only"),
           open_browser: bool = typer.Option(False, "--open")) -> None:
     """Start the API and dashboard (loopback only unless --host says otherwise)."""
     import uvicorn
 
-    from .api import create_app
+    from .api import allowed_host_names, create_app
 
     h = home()
     port = port or h.load_config().settings.port
-    extra: set[str] = set()
+    try:
+        extra = allowed_host_names(host, allowed_host)
+    except ValueError as e:
+        fail(str(e))
     if host not in ("127.0.0.1", "localhost", "::1"):
         con.print("[yellow]warning:[/] listening beyond this machine. Anyone who can reach the port "
                   "and holds the token can start runs that execute code. Prefer an SSH tunnel.")
-        extra = {host} if host != "0.0.0.0" else set()
+    if extra:
+        con.print("Accepting Host: " + ", ".join(sorted(extra)), markup=False)
     manager = RunManager(h)
     manager.router()
     for w in manager.warnings:

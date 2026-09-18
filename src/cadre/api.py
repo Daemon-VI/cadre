@@ -2,16 +2,20 @@
 
 This port can start runs that execute code, so it is locked:
   * binds to loopback unless told otherwise,
-  * every /api call needs `Authorization: Bearer <token>` (except /api/health),
+  * every /api call needs `Authorization: Bearer <token>` (except /api/v1/health),
   * the Host header must be a loopback name (DNS-rebinding defence),
   * no CORS headers, a strict CSP, and the event stream is read with fetch + headers so the
     token never appears in a URL or an access log.
 Keys are accepted on POST and never returned by any endpoint.
+
+Every endpoint is served at /api/v1 (the contract, pinned by tests/snapshots/openapi-v1.json) and
+at the unversioned /api alias kept for 1.0 scripts until 2.0 (ADR-025).
 """
 
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import re
 import secrets as pysecrets
@@ -19,7 +23,7 @@ from contextlib import asynccontextmanager
 from importlib import resources
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -92,11 +96,33 @@ class DecisionIn(BaseModel):
     answer: str = ""
 
 
+HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
+
+
 def _host_ok(host: str | None, extra: set[str]) -> bool:
     if not host:
         return False
     name = host.rsplit(":", 1)[0] if not host.startswith("[") else host[1:].split("]")[0]
+    name = name.lower()
     return name in LOOPBACK or name in extra
+
+
+def allowed_host_names(bind: str, names: list[str] | None = None) -> set[str]:
+    """`Host` headers accepted besides loopback (FR-14.7): the bind address when it names one
+    interface, plus each `--allowed-host` (a Tailscale name, a container's service name). Exact
+    names only — no wildcards, and `0.0.0.0` adds nothing, so DNS rebinding stays closed."""
+    out: set[str] = set()
+    for raw in [bind, *(names or [])]:
+        name = raw.strip().lower().strip("[]")
+        if name in LOOPBACK or name in ("0.0.0.0", "::"):
+            continue
+        try:
+            ipaddress.ip_address(name)
+        except ValueError:
+            if not HOSTNAME.match(name):
+                raise ValueError(f"not a host name: {raw!r}") from None
+        out.add(name)
+    return out
 
 
 def create_app(manager: RunManager, *, token: str | None = None,
@@ -146,6 +172,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
             raise HTTPException(401, "missing or wrong bearer token", {"WWW-Authenticate": "Bearer"})
 
     secured = [Depends(auth)]
+    api = APIRouter()  # mounted at /api/v1 and at the /api alias below
     store = manager.store
     home = manager.home
 
@@ -170,11 +197,11 @@ def create_app(manager: RunManager, *, token: str | None = None,
         return Response(web.joinpath(name).read_bytes(), media_type=types[name])
 
     # ------------------------------------------------------------------ meta
-    @app.get("/api/health")
+    @api.get("/health")
     async def health() -> dict[str, Any]:
         return {"ok": True, "version": __version__}
 
-    @app.get("/api/presets", dependencies=secured)
+    @api.get("/presets", dependencies=secured)
     async def presets() -> dict[str, Any]:
         return {"checked": CHECKED, "presets": [
             {"id": p.id, "label": p.label, "free": p.free, "local": p.local, "signup": p.signup,
@@ -194,11 +221,11 @@ def create_app(manager: RunManager, *, token: str | None = None,
                 "reserve_pct": pc.reserve_pct,
                 "models": [m.model_dump() for m in pc.models]}
 
-    @app.get("/api/providers", dependencies=secured)
+    @api.get("/providers", dependencies=secured)
     async def providers() -> list[dict[str, Any]]:
         return [provider_view(pc) for pc in home.load_config().providers]
 
-    @app.post("/api/providers", dependencies=secured)
+    @api.post("/providers", dependencies=secured)
     async def add_provider(body: ProviderIn) -> dict[str, Any]:
         cfg = home.load_config()
         pid = body.id or body.preset
@@ -236,7 +263,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         await manager.reload()
         return {**provider_view(pc), "warning": warning}
 
-    @app.put("/api/providers/{pid}/models", dependencies=secured)
+    @api.put("/providers/{pid}/models", dependencies=secured)
     async def set_models(pid: str, body: ModelsIn) -> dict[str, Any]:
         cfg = home.load_config()
         pc = cfg.provider(pid)
@@ -247,7 +274,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         await manager.reload()
         return provider_view(pc)
 
-    @app.post("/api/providers/{pid}/test", dependencies=secured)
+    @api.post("/providers/{pid}/test", dependencies=secured)
     async def test_provider(pid: str) -> dict[str, Any]:
         pc = home.load_config().provider(pid)
         if pc is None:
@@ -259,7 +286,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
             await prov.aclose()
         return {"ok": ok, "detail": detail}
 
-    @app.get("/api/providers/{pid}/models", dependencies=secured)
+    @api.get("/providers/{pid}/models", dependencies=secured)
     async def remote_models(pid: str) -> dict[str, Any]:
         pc = home.load_config().provider(pid)
         if pc is None:
@@ -274,7 +301,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         flt = PRESETS[pc.preset].discover_filter if pc.preset in PRESETS else None
         return {"models": names, "suggested": [n for n in names if not flt or re.search(flt, n)]}
 
-    @app.post("/api/providers/{pid}/refresh", dependencies=secured)
+    @api.post("/providers/{pid}/refresh", dependencies=secured)
     async def refresh(pid: str, apply: bool = False) -> dict[str, Any]:
         cfg = home.load_config()
         pc = cfg.provider(pid)
@@ -287,7 +314,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
             await manager.reload()
         return {**diff.model_dump(), "applied": apply and not diff.error}
 
-    @app.delete("/api/providers/{pid}", dependencies=secured)
+    @api.delete("/providers/{pid}", dependencies=secured)
     async def remove_provider(pid: str) -> dict[str, Any]:
         cfg = home.load_config()
         pc = cfg.provider(pid)
@@ -299,7 +326,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         await manager.reload()
         return {"removed": pid, "key_deleted": removed_key}
 
-    @app.get("/api/quota", dependencies=secured)
+    @api.get("/quota", dependencies=secured)
     async def quota() -> list[dict[str, Any]]:
         router = manager.router()
         rows = []
@@ -311,11 +338,11 @@ def create_app(manager: RunManager, *, token: str | None = None,
             rows.append(snap)
         return rows
 
-    @app.get("/api/usage", dependencies=secured)
+    @api.get("/usage", dependencies=secured)
     async def usage(days: int = 7) -> list[dict[str, Any]]:
         return usage_ledger(store, home.load_config(), min(max(days, 1), 90))
 
-    @app.post("/api/forecast", dependencies=secured)
+    @api.post("/forecast", dependencies=secured)
     async def forecast_endpoint(body: ForecastIn) -> dict[str, Any]:
         try:
             text = body.yaml if body.yaml is not None else find_org_text(body.org or "", home.orgs_dir)[1]
@@ -341,7 +368,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
                            for a in org.agents],
                 "checks": [c.name for c in org.checks], "budget": org.budget.model_dump()}
 
-    @app.get("/api/orgs", dependencies=secured)
+    @api.get("/orgs", dependencies=secured)
     async def orgs() -> list[dict[str, Any]]:
         out = []
         for p in sorted(home.orgs_dir.glob("*.y*ml")):
@@ -351,7 +378,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
             out.append(org_summary(name, "template", text))
         return out
 
-    @app.get("/api/orgs/{name}", dependencies=secured)
+    @api.get("/orgs/{name}", dependencies=secured)
     async def org(name: str) -> dict[str, Any]:
         try:
             source, text = find_org_text(name, home.orgs_dir)
@@ -359,11 +386,11 @@ def create_app(manager: RunManager, *, token: str | None = None,
             raise HTTPException(404, str(e)) from None
         return {**org_summary(name, source, text), "yaml": text}
 
-    @app.post("/api/orgs/validate", dependencies=secured)
+    @api.post("/orgs/validate", dependencies=secured)
     async def validate_org(body: OrgIn) -> dict[str, Any]:
         return org_summary("draft", "draft", body.yaml)
 
-    @app.put("/api/orgs/{name}", dependencies=secured)
+    @api.put("/orgs/{name}", dependencies=secured)
     async def save_org(name: str, body: OrgIn) -> dict[str, Any]:
         if not SLUG.match(name):
             raise HTTPException(400, "org name must be lowercase letters, digits, - or _")
@@ -374,7 +401,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         return summary
 
     # ------------------------------------------------------------------ runs
-    @app.post("/api/runs", dependencies=secured)
+    @api.post("/runs", dependencies=secured)
     async def start_run(body: RunIn) -> dict[str, Any]:
         if not body.org and not body.yaml:
             raise HTTPException(400, "give an org name or org yaml")
@@ -393,11 +420,11 @@ def create_app(manager: RunManager, *, token: str | None = None,
         manager.start(rid)
         return {"id": rid}
 
-    @app.get("/api/runs", dependencies=secured)
+    @api.get("/runs", dependencies=secured)
     async def runs(limit: int = 50) -> list[dict[str, Any]]:
         return store.list_runs(min(max(limit, 1), 500))
 
-    @app.get("/api/runs/{rid}", dependencies=secured)
+    @api.get("/runs/{rid}", dependencies=secured)
     async def run(rid: str) -> dict[str, Any]:
         r = run_or_404(rid)
         r.pop("org_yaml", None)
@@ -410,16 +437,16 @@ def create_app(manager: RunManager, *, token: str | None = None,
         r["artifacts"] = sorted(p.name for p in folder.glob("*")) if folder.exists() else []
         return r
 
-    @app.get("/api/runs/{rid}/org", dependencies=secured)
+    @api.get("/runs/{rid}/org", dependencies=secured)
     async def run_org(rid: str) -> PlainTextResponse:
         return PlainTextResponse(run_or_404(rid)["org_yaml"])
 
-    @app.get("/api/runs/{rid}/events", dependencies=secured)
+    @api.get("/runs/{rid}/events", dependencies=secured)
     async def events(rid: str, after: int = 0, limit: int = 500) -> list[dict[str, Any]]:
         run_or_404(rid)
         return store.events(rid, after, min(max(limit, 1), 2000))
 
-    @app.get("/api/runs/{rid}/stream", dependencies=secured)
+    @api.get("/runs/{rid}/stream", dependencies=secured)
     async def stream(rid: str, after: int = 0) -> StreamingResponse:
         run_or_404(rid)
 
@@ -445,12 +472,12 @@ def create_app(manager: RunManager, *, token: str | None = None,
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 
-    @app.post("/api/runs/{rid}/cancel", dependencies=secured)
+    @api.post("/runs/{rid}/cancel", dependencies=secured)
     async def cancel(rid: str) -> dict[str, Any]:
         run_or_404(rid)
         return {"cancelled": manager.cancel(rid)}
 
-    @app.post("/api/runs/{rid}/resume", dependencies=secured)
+    @api.post("/runs/{rid}/resume", dependencies=secured)
     async def resume(rid: str) -> dict[str, Any]:
         r = run_or_404(rid)
         if rid in manager.tasks or r["status"] in ACTIVE:
@@ -460,7 +487,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         manager.start(rid)
         return {"id": rid, "resumed": True}
 
-    @app.get("/api/runs/{rid}/artifacts/{name}", dependencies=secured)
+    @api.get("/runs/{rid}/artifacts/{name}", dependencies=secured)
     async def artifact(rid: str, name: str) -> PlainTextResponse:
         run_or_404(rid)
         folder = (home.runs_dir / rid / "artifacts").resolve()
@@ -469,7 +496,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
             raise HTTPException(404, "no such artifact")
         return PlainTextResponse(target.read_text(encoding="utf-8", errors="replace"))
 
-    @app.get("/api/runs/{rid}/files/{path:path}", dependencies=secured)
+    @api.get("/runs/{rid}/files/{path:path}", dependencies=secured)
     async def file(rid: str, path: str) -> PlainTextResponse:
         run_or_404(rid)
         ws = Workspace(home.runs_dir / rid)
@@ -479,17 +506,20 @@ def create_app(manager: RunManager, *, token: str | None = None,
             raise HTTPException(404, str(e)) from None
 
     # ------------------------------------------------------------------ approvals
-    @app.get("/api/approvals", dependencies=secured)
+    @api.get("/approvals", dependencies=secured)
     async def approvals(pending: bool = True, run: str | None = None) -> list[dict[str, Any]]:
         return store.approvals(run, pending_only=pending)
 
-    @app.post("/api/approvals/{aid}", dependencies=secured)
+    @api.post("/approvals/{aid}", dependencies=secured)
     async def decide(aid: str, body: DecisionIn) -> dict[str, Any]:
         if store.get_approval(aid) is None:
             raise HTTPException(404, "no such approval")
         if not store.decide(aid, body.approve, body.answer):
             raise HTTPException(409, "already decided")
         return {"id": aid, "approved": body.approve}
+
+    app.include_router(api, prefix="/api/v1")
+    app.include_router(api, prefix="/api", include_in_schema=False)
 
     @app.exception_handler(KeyError)
     async def key_error(request: Request, exc: KeyError) -> JSONResponse:

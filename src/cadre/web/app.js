@@ -114,7 +114,7 @@ function showLogin() {
 async function refreshBadge() {
   if (!token()) return;
   try {
-    const pending = await api("/api/approvals?pending=true");
+    const pending = await api("/api/v1/approvals?pending=true");
     const b = document.getElementById("approval-count");
     b.textContent = pending.length;
     b.classList.toggle("hidden", pending.length === 0);
@@ -137,7 +137,7 @@ function viewRuns() {
         h("th", { text: "Status" }), h("th", { class: "num", text: "Calls" }), h("th", { class: "num", text: "Tokens" }))), body),
       empty));
   const load = async () => {
-    const runs = await api("/api/runs");
+    const runs = await api("/api/v1/runs");
     empty.classList.toggle("hidden", runs.length > 0);
     body.replaceChildren(...runs.map((r) => h("tr", { class: "click", onclick: () => (location.hash = `#/run/${r.id}`) },
       h("td", { class: "small", text: when(r.created) }),
@@ -214,7 +214,7 @@ function approvalBox(d) {
   const answer = h("input", { type: "text", placeholder: d.kind === "question" ? "Your answer" : "Optional note" });
   const decide = async (approve) => {
     try {
-      await api(`/api/approvals/${d.id}`, { method: "POST", body: { approve, answer: answer.value } });
+      await api(`/api/v1/approvals/${d.id}`, { method: "POST", body: { approve, answer: answer.value } });
       box.replaceChildren(`decided: ${approve ? "approved" : "rejected"}`);
       refreshBadge();
     } catch (err) { toast(err.message); }
@@ -230,7 +230,7 @@ function approvalBox(d) {
 }
 
 async function readStream(rid, after, onEvent, signal) {
-  const res = await fetch(`/api/runs/${rid}/stream?after=${after}`, { headers: { Authorization: `Bearer ${token()}` }, signal });
+  const res = await fetch(`/api/v1/runs/${rid}/stream?after=${after}`, { headers: { Authorization: `Bearer ${token()}` }, signal });
   if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
   const reader = res.body.getReader();
   const dec = new TextDecoder();
@@ -284,12 +284,12 @@ function viewRun(rid) {
   };
 
   const loadRun = async () => {
-    const r = await api(`/api/runs/${rid}`);
+    const r = await api(`/api/v1/runs/${rid}`);
     const actions = h("div", { class: "row" });
     if (ACTIVE.has(r.status)) actions.append(h("button", { class: "danger", onclick: async () => {
-      await api(`/api/runs/${rid}/cancel`, { method: "POST" }); toast("Cancelling…"); } }, "Cancel run"));
+      await api(`/api/v1/runs/${rid}/cancel`, { method: "POST" }); toast("Cancelling…"); } }, "Cancel run"));
     if (["interrupted", "failed", "stopped", "cancelled", "unapproved", "parked"].includes(r.status)) actions.append(h("button", { onclick: async () => {
-      try { await api(`/api/runs/${rid}/resume`, { method: "POST" }); toast("Resumed — finished steps are reused, not re-billed."); follow(); }
+      try { await api(`/api/v1/runs/${rid}/resume`, { method: "POST" }); toast("Resumed — finished steps are reused, not re-billed."); follow(); }
       catch (err) { toast(err.message); } } }, "Resume"));
     head.replaceChildren(h("div", { class: "row spread" },
       h("div", {},
@@ -317,7 +317,7 @@ function viewRun(rid) {
     const list = h("div", { class: "filelist" }, ...r.files.map((f) => h("button", { onclick: async (ev) => {
       [...list.children].forEach((b) => b.classList.remove("on"));
       ev.currentTarget.classList.add("on");
-      viewer.textContent = await api(`/api/runs/${rid}/files/${f.path.split("/").map(encodeURIComponent).join("/")}`);
+      viewer.textContent = await api(`/api/v1/runs/${rid}/files/${f.path.split("/").map(encodeURIComponent).join("/")}`);
       viewer.classList.remove("hidden");
     } }, h("span", { class: "mono", text: f.path }), h("span", { class: "small muted", text: `  v${f.versions} · ${f.agent}` }))));
     files.replaceChildren(r.files.length ? h("div", { class: "split" }, list, viewer) : h("p", { class: "muted", text: "No files yet." }));
@@ -343,8 +343,8 @@ function viewRun(rid) {
 
 // ---------------------------------------------------------------- new run
 async function viewNew(preselect) {
-  const orgs = (await api("/api/orgs").catch((e) => { toast(e.message); return []; })).filter((o) => o.valid);
-  const providers = await api("/api/providers").catch(() => []);
+  const orgs = (await api("/api/v1/orgs").catch((e) => { toast(e.message); return []; })).filter((o) => o.valid);
+  const providers = await api("/api/v1/providers").catch(() => []);
   const hasKey = providers.some((p) => p.models.length && (p.local || p.key !== "missing"));
   const select = h("select", { id: "org" }, ...orgs.map((o) => h("option", { value: o.name, text: `${o.name}${o.source === "yours" ? "" : "  (template)"}` })));
   if (preselect) select.value = preselect;
@@ -368,7 +368,7 @@ async function viewNew(preselect) {
   const start = h("button", { class: "primary", onclick: async () => {
     start.disabled = true;
     try {
-      const r = await api("/api/runs", { method: "POST", body: { org: select.value, goal: goal.value, allow_exec: exec.checked, auto_approve: auto.checked, demo: demo.checked } });
+      const r = await api("/api/v1/runs", { method: "POST", body: { org: select.value, goal: goal.value, allow_exec: exec.checked, auto_approve: auto.checked, demo: demo.checked } });
       location.hash = `#/run/${r.id}`;
     } catch (err) { toast(err.message); start.disabled = false; }
   } }, "Start run");
@@ -390,19 +390,19 @@ async function viewNew(preselect) {
 
 // ---------------------------------------------------------------- orgs
 async function viewOrgs() {
-  const orgs = await api("/api/orgs").catch((e) => { toast(e.message); return []; });
+  const orgs = await api("/api/v1/orgs").catch((e) => { toast(e.message); return []; });
   const name = h("input", { type: "text", id: "orgname", placeholder: "my-team" });
   const yaml = h("textarea", { class: "code", id: "orgyaml", spellcheck: "false" });
   const out = h("div");
   const load = async (n) => {
-    const o = await api(`/api/orgs/${encodeURIComponent(n)}`);
+    const o = await api(`/api/v1/orgs/${encodeURIComponent(n)}`);
     yaml.value = o.yaml;
     name.value = o.source === "yours" || String(o.source).endsWith(".yaml") ? n : `my-${n}`;
     out.replaceChildren();
     yaml.scrollIntoView({ behavior: "smooth", block: "center" });
   };
   const validate = async () => {
-    const r = await api("/api/orgs/validate", { method: "POST", body: { yaml: yaml.value } });
+    const r = await api("/api/v1/orgs/validate", { method: "POST", body: { yaml: yaml.value } });
     out.replaceChildren(r.valid ? h("div", { class: "callout info", text: `Valid: ${r.agents.length} agents, ${r.workflow} workflow.` })
       : h("div", { class: "callout" }, h("b", { text: "Not valid:" }), h("ul", {}, ...r.errors.map((e) => h("li", { class: "mono", text: e })))));
     return r.valid;
@@ -429,7 +429,7 @@ async function viewOrgs() {
         h("button", { onclick: () => validate().catch((e) => toast(e.message)) }, "Validate"),
         h("button", { class: "primary", onclick: async () => {
           try {
-            await api(`/api/orgs/${encodeURIComponent(name.value.trim())}`, { method: "PUT", body: { yaml: yaml.value } });
+            await api(`/api/v1/orgs/${encodeURIComponent(name.value.trim())}`, { method: "PUT", body: { yaml: yaml.value } });
             toast("Saved."); viewOrgs();
           } catch (err) { toast(err.message); }
         } }, "Save"))));
@@ -437,11 +437,11 @@ async function viewOrgs() {
 
 // ---------------------------------------------------------------- providers + quota
 async function viewProviders() {
-  const [presetInfo, providers] = await Promise.all([api("/api/presets"), api("/api/providers")]).catch((e) => { toast(e.message); return [{ presets: [] }, []]; });
+  const [presetInfo, providers] = await Promise.all([api("/api/v1/presets"), api("/api/v1/providers")]).catch((e) => { toast(e.message); return [{ presets: [] }, []]; });
   const presets = presetInfo.presets;
   const quotaBody = h("tbody");
   const loadQuota = async () => {
-    const rows = await api("/api/quota");
+    const rows = await api("/api/v1/quota");
     quotaBody.replaceChildren(...rows.map((q) => {
       const L = q.limits;
       const bar = (used, lim) => {
@@ -487,7 +487,7 @@ async function viewProviders() {
     const m = models.value.split(",").map((s) => s.trim()).filter(Boolean);
     if (m.length) body.models = m;
     try {
-      const r = await api("/api/providers", { method: "POST", body });
+      const r = await api("/api/v1/providers", { method: "POST", body });
       key.value = "";
       toast(r.warning ? `Added ${r.id} — ${r.warning}` : `Added ${r.id} with ${r.models.length} model(s).`);
       viewProviders();
@@ -502,8 +502,8 @@ async function viewProviders() {
           h("span", { class: `pill ${p.key === "missing" ? "bad" : "good"}`, text: p.key === "missing" ? "no key" : `key: ${p.key}` }),
           p.disabled_reason ? h("div", { class: "callout", text: p.disabled_reason }) : null),
         h("div", { class: "row" },
-          h("button", { onclick: async () => { status.textContent = "testing…"; const r = await api(`/api/providers/${p.id}/test`, { method: "POST" }); status.textContent = `${r.ok ? "OK" : "problem"}: ${r.detail}`; } }, "Test"),
-          h("button", { class: "danger", onclick: async () => { await api(`/api/providers/${p.id}`, { method: "DELETE" }); toast(`Removed ${p.id}.`); viewProviders(); } }, "Remove"))),
+          h("button", { onclick: async () => { status.textContent = "testing…"; const r = await api(`/api/v1/providers/${p.id}/test`, { method: "POST" }); status.textContent = `${r.ok ? "OK" : "problem"}: ${r.detail}`; } }, "Test"),
+          h("button", { class: "danger", onclick: async () => { await api(`/api/v1/providers/${p.id}`, { method: "DELETE" }); toast(`Removed ${p.id}.`); viewProviders(); } }, "Remove"))),
       status,
       h("div", { class: "table-wrap" }, h("table", {},
         h("thead", {}, h("tr", {}, ...["Model", "Tier", "Family", "RPM", "RPD", "TPM", "TPD", "Protocol"].map((x) => h("th", { text: x })))),
@@ -556,7 +556,7 @@ function viewUsage() {
   const goal = h("input", { type: "text", id: "forecast-goal", placeholder: "Goal to forecast" });
   const out = h("pre", { class: "hidden" });
   const load = async () => {
-    const rows = await api(`/api/usage?days=${days.value}`);
+    const rows = await api(`/api/v1/usage?days=${days.value}`);
     empty.classList.toggle("hidden", rows.length > 0);
     body.replaceChildren(...rows.map((r) => h("tr", {},
       h("td", { class: "small", text: r.day }),
@@ -569,11 +569,11 @@ function viewUsage() {
       h("td", { class: "small", text: r.next_reset || "" }))));
   };
   days.addEventListener("change", () => load().catch((e) => toast(e.message)));
-  api("/api/orgs").then((orgs) => org.replaceChildren(...orgs.filter((o) => o.valid)
+  api("/api/v1/orgs").then((orgs) => org.replaceChildren(...orgs.filter((o) => o.valid)
     .map((o) => h("option", { value: o.name, text: o.name })))).catch(() => {});
   const run = h("button", { onclick: async () => {
     try {
-      const f = await api("/api/forecast", { method: "POST", body: { org: org.value, goal: goal.value || "(goal)" } });
+      const f = await api("/api/v1/forecast", { method: "POST", body: { org: org.value, goal: goal.value || "(goal)" } });
       out.textContent = f.lines.join("\n");
       out.classList.remove("hidden");
     } catch (err) { toast(err.message); }
@@ -604,7 +604,7 @@ function viewApprovals() {
     h("p", { class: "sub", text: "Gates, questions from agents, and permission to run code. Runs wait here until you decide." }), box);
   let shown = null;
   const load = async () => {
-    const items = await api("/api/approvals?pending=true");
+    const items = await api("/api/v1/approvals?pending=true");
     const ids = items.map((a) => a.id).join(",");
     if (ids === shown) return; // don't wipe an answer being typed
     shown = ids;

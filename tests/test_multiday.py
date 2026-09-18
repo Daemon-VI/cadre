@@ -133,7 +133,7 @@ def test_serve_resumes_due_parked_runs(home):
                 break
             time.sleep(0.05)
         assert m.store.get_run(rid)["status"] == "succeeded"
-        assert c.get("/api/runs").status_code == 401  # still locked while it works
+        assert c.get("/api/v1/runs").status_code == 401  # still locked while it works
 
 
 def test_scheduler_command_is_shown_not_run(monkeypatch):
