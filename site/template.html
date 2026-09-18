@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="{{description}}">
+<title>{{title}}</title>
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+{{scripts}}
+</head>
+<body class="{{body_class}}">
+<a class="skip" href="#main">Skip to the content</a>
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt="" width="28" height="28"><span>Cadre</span></a>
+    <span class="tagline">a team of AI agents on free model keys</span>
+    <a class="repo" href="https://github.com/Daemon-VI/cadre">Source on GitHub</a>
+  </div>
+</header>
+<div class="wrap layout">
+  <nav class="site-nav" aria-label="Pages">{{nav}}</nav>
+  <main id="main">
+{{content}}
+  </main>
+</div>
+<footer class="site-foot">
+  <div class="wrap">
+    <p>Built {{built}} from <a href="https://github.com/Daemon-VI/cadre/tree/main/site">site/</a>. Cadre is licensed under <a href="https://github.com/Daemon-VI/cadre/blob/main/LICENSE">Apache-2.0</a>. This page: <a href="{{source}}">source</a>. No cookies, trackers, external fonts or scripts.</p>
+  </div>
+</footer>
+</body>
+</html>
