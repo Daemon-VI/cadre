@@ -1,0 +1,243 @@
+{
+  "name": "cadre",
+  "displayName": "Cadre",
+  "description": "Run an organisation of AI agents on your free model keys: watch runs live, approve gates, review the branch a run wrote.",
+  "version": "0.1.0",
+  "publisher": "daemon-vi",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Daemon-VI/cadre",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/Daemon-VI/cadre/issues"
+  },
+  "homepage": "https://github.com/Daemon-VI/cadre/tree/main/editors/vscode#readme",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "agents",
+    "multi-agent",
+    "llm",
+    "free tier",
+    "code review"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In an untrusted folder Cadre will not start a run on the folder or run git in it; watching runs and answering approvals still work."
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Cadre",
+      "properties": {
+        "cadre.port": {
+          "type": "number",
+          "default": 8765,
+          "minimum": 1,
+          "maximum": 65535,
+          "markdownDescription": "Port of the local Cadre server (`cadre serve --port`). The extension only ever talks to `127.0.0.1`."
+        },
+        "cadre.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Start `cadre serve` (or `uvx cadre-ai serve`) in the background when a Cadre view or command needs the server and none answers. When off, the extension asks first."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cadre",
+          "title": "Cadre",
+          "icon": "media/cadre.svg"
+        }
+      ]
+    },
+    "views": {
+      "cadre": [
+        {
+          "id": "cadre.runs",
+          "name": "Runs",
+          "icon": "media/cadre.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "cadre.runs",
+        "contents": "No runs to show. Cadre starts its local server when this view opens (setting `cadre.autoStart`).\n[Start run on this folder](command:cadre.startRun)\n[Start server](command:cadre.startServer)\nNo model key yet? [Add provider](command:cadre.addProvider) — the key is typed into the terminal, never into the editor."
+      }
+    ],
+    "commands": [
+      {
+        "command": "cadre.refreshRuns",
+        "title": "Refresh",
+        "category": "Cadre",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "cadre.openRun",
+        "title": "Open run",
+        "category": "Cadre",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "cadre.forecast",
+        "title": "Forecast",
+        "category": "Cadre",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "cadre.startRun",
+        "title": "Start run on this folder",
+        "category": "Cadre",
+        "icon": "$(add)",
+        "enablement": "isWorkspaceTrusted && workspaceFolderCount > 0"
+      },
+      {
+        "command": "cadre.reviewBranch",
+        "title": "Review branch",
+        "category": "Cadre",
+        "icon": "$(git-compare)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "cadre.addProvider",
+        "title": "Add provider",
+        "category": "Cadre",
+        "icon": "$(key)"
+      },
+      {
+        "command": "cadre.openDashboard",
+        "title": "Open dashboard",
+        "category": "Cadre",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "cadre.approvals",
+        "title": "Review pending approvals",
+        "category": "Cadre",
+        "icon": "$(bell)"
+      },
+      {
+        "command": "cadre.startServer",
+        "title": "Start server",
+        "category": "Cadre"
+      },
+      {
+        "command": "cadre.cancelRun",
+        "title": "Cancel run",
+        "category": "Cadre",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "cadre.resumeRun",
+        "title": "Resume run",
+        "category": "Cadre",
+        "icon": "$(debug-continue)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "cadre.startRun",
+          "when": "view == cadre.runs",
+          "group": "navigation@1"
+        },
+        {
+          "command": "cadre.refreshRuns",
+          "when": "view == cadre.runs",
+          "group": "navigation@9"
+        },
+        {
+          "command": "cadre.forecast",
+          "when": "view == cadre.runs",
+          "group": "1_run@1"
+        },
+        {
+          "command": "cadre.approvals",
+          "when": "view == cadre.runs",
+          "group": "1_run@2"
+        },
+        {
+          "command": "cadre.addProvider",
+          "when": "view == cadre.runs",
+          "group": "2_setup@1"
+        },
+        {
+          "command": "cadre.openDashboard",
+          "when": "view == cadre.runs",
+          "group": "2_setup@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "cadre.openRun",
+          "when": "view == cadre.runs && viewItem =~ /cadreRun/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "cadre.reviewBranch",
+          "when": "view == cadre.runs && viewItem =~ /cadreRun/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "cadre.approvals",
+          "when": "view == cadre.runs && viewItem =~ /:waiting/",
+          "group": "2_act@1"
+        },
+        {
+          "command": "cadre.cancelRun",
+          "when": "view == cadre.runs && viewItem =~ /:active/",
+          "group": "2_act@2"
+        },
+        {
+          "command": "cadre.resumeRun",
+          "when": "view == cadre.runs && viewItem =~ /:resumable/",
+          "group": "2_act@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "cadre.refreshRuns",
+          "when": "false"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "vscode:prepublish": "node esbuild.mjs --production",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/webview",
+    "lint": "eslint .",
+    "compile-tests": "tsc -p .",
+    "test": "npm run build && npm run compile-tests && node --test \"out/test/unit/*.test.js\"",
+    "test:integration": "npm run build && npm run compile-tests && node out/test/integration/runTest.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.19.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.10.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.0"
+  }
+}
