@@ -3,6 +3,25 @@
 All dates are 2026. Numbers come from `docs/PROJECT_STATE.md`, where each one is traced to a test,
 observed output, or a dated source.
 
+## 1.0.1 — 2026-09-19
+
+Fixes found by looking at the dashboard on screen for the first time and by the first run of the
+Action through `uses: Daemon-VI/cadre@v1`. Nothing else changed since 1.0.0.
+
+### Fixed — the GitHub Action
+- The pull request's title took the first 60 bytes of the goal, newline included. It is now the
+  goal's first line (the issue's title), cut at a word.
+- The pull request's body ends with `Closes #N` when the run came from an issue, so merging it
+  closes the issue.
+
+### Fixed — the dashboard
+- A run page printed "nullnullnull" under the goal: absent optional parts are now dropped.
+- Usage meters were shorter on rows with a "near cap" badge; the badge has its own slot.
+- Run start times wrapped onto a second line, and at phone width goals were squeezed to one word a
+  line.
+- An artifact event showed raw JSON with the absolute path; it now names the saved file.
+- The provider heading read "Google AI Studio (Gemini) (gemini)"; the id is shown as code.
+
 ## 1.0.0 — 2026-09-19
 
 The first public release. Cadre can now **finish an existing project** as well as build a new
