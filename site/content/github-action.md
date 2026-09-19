@@ -12,9 +12,11 @@ body is its report plus a usage table. A human merges it, or doesn't.
 > **Status: tested on a real repository (2026-09-19).** On
 > [`Daemon-VI/cadre-action-demo`](https://github.com/Daemon-VI/cadre-action-demo), a half-finished
 > package with 5 of 7 tests failing, a `/cadre` comment led to
-> [pull request #2](https://github.com/Daemon-VI/cadre-action-demo/pull/2): 18 calls and 34,222
-> tokens on Groq's free tier, about 7 minutes, with all 7 tests passing on the branch. The first two
-> tries failed and exposed four bugs, all now fixed. `Daemon-VI/cadre@v1` needs a `v1` tag that has
+> [pull request #3](https://github.com/Daemon-VI/cadre-action-demo/pull/3): 18 calls and 42,936
+> tokens on free Gemini and Groq keys, about 75 seconds, with the review done by a different
+> model family from the engineer and all 7 tests passing on the branch. On Groq alone the same job
+> took about 7 minutes ([#2](https://github.com/Daemon-VI/cadre-action-demo/pull/2)). The first
+> two tries failed and exposed four bugs, all now fixed. `Daemon-VI/cadre@v1` needs a `v1` tag that has
 > not been pushed yet, so pin a commit (as the demo does) until it exists.
 
 ## Set it up

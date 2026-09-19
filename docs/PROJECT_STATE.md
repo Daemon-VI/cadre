@@ -155,6 +155,8 @@ commit, because no `v1` tag exists.
 | 2 (`20260919-052024-b28d53`) | `/cadre …` comment | `unapproved`, 0 commits, no PR, report and usage on the issue: 23 calls, 50,112 + 3,433 tokens, ~12 min | (a) the `GEMINI_API_KEY` secret was invalid, and Google's 400 bad-key reply was retried on five models on every call, leaving everything on Groq's 8,000 TPM (each engineer call waited ~58 s); (b) `edit_file` failed on two identical `raise NotImplementedError` lines ("matches 2 times" / "0 times") until the engineer ran out of turns; (c) **the engineer said "Implemented…" but the `tests` check failed, and the gate held** |
 | 3 (`20260919-061803-9643b6`) | `/cadre …` comment | **succeeded → [PR #2](https://github.com/Daemon-VI/cadre-action-demo/pull/2)**, 1 commit, +19/−2 in `textstats/core.py`: 18 calls, 31,067 + 3,155 tokens, ~7 min | with the fixes in place, one edit missed and the error pointed at the right line, and the next two edits landed. The engineer's own `run_check` and the engine's gate both passed. **All 7 tests passed when re-run by hand on the PR branch.** The commit is attributed to Daemon-VI. The Gemini key was skipped before the run ("key rejected") |
 
+| 4 (`20260919-064319-530a99`) | `/cadre …` comment, after the Gemini secret was fixed | **succeeded → [PR #3](https://github.com/Daemon-VI/cadre-action-demo/pull/3)**, +13/−2: 18 calls, 40,354 + 2,582 tokens, **~75 s** | both keys passed the pre-run check. The engineer used gemini-3.6/3.5-flash, the lead used gemini-3.8-flash and gpt-oss-120b, and the **reviewer used gpt-oss-120b, a different family from the engineer, so the review was independent**. The first check failed, one more edit fixed it, and the check passed. **All 7 tests passed when re-run by hand on the PR branch.** Spreading the load over two providers took the run from ~7 min to ~75 s |
+
 Fixes (b1641fd, a6226ff; 205 tests):
 - No PR for an empty branch; the comment then carries the report.
 - The timeline goes to the log, and REPORT/plan to an artifact.
@@ -163,11 +165,14 @@ Fixes (b1641fd, a6226ff; 205 tests):
 - `edit_file` lists the lines of repeated matches and takes `line`.
 - The release trigger narrowed to full versions.
 
+The Gemini secret was malformed at first: 63 characters with whitespace, as found by a
+metadata-only shape check on a throwaway branch, since deleted. That made run 3's review only
+partly independent. Rithik saved the key to a file, and it was piped into `gh secret set` without
+being displayed. It is Google's newer format (`AQ.` + 50 characters, HTTP 200 on `/models`), which
+`tools/check_history.py` now recognises as well (cd19220).
+
 **Still open:**
-- The Gemini secret is still wrong. A shape check on a throwaway branch (since deleted) printed
-  only metadata: 63 characters, no `AIza` prefix, contains whitespace. It holds more than the key.
-  So run 3's review was only partly independent: 3 Qwen calls plus 1 fallback to gpt-oss-120b,
-  marked "not independent".
+- Both PRs (#2 and #3) are open. Merging one is Rithik's call.
 - The lead's report says "`pytest`… all tests pass"; the check actually ran `unittest`. This is
   model wording, and the gate result itself is accurate.
 - A runner starts with an empty usage ledger, so "left today" is always the full free limit.
@@ -487,10 +492,9 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 7. **D0 gate:** once CI is green, ask Rithik to confirm making `Daemon-VI/cadre` public (he agreed
    in principle on 2026-09-18). After that, enable Pages (Settings → Pages → GitHub Actions) and
    turn on private vulnerability reporting.
-8. ~~D3 real test~~: **done 2026-09-19**, PR #2 on `cadre-action-demo` (see "D3 on a real
-   repository"). Left: Rithik re-sets `GEMINI_API_KEY` with only the key (the current secret holds
-   extra text), then run it once more for an independent review. Ask before listing the action on
-   the Marketplace, and before pushing a `v1` tag.
+8. ~~D3 real test~~: **done 2026-09-19**, PR #2 (Groq only) and PR #3 (Gemini + Groq, independent
+   review, ~75 s) on `cadre-action-demo` (see "D3 on a real repository"). Ask before listing the
+   action on the Marketplace, and before pushing a `v1` tag.
 9. **First publishes:** each needs his yes. PyPI needs a pending publisher on pypi.org (owner
    `Daemon-VI`, repository `cadre`, workflow `release.yml`, environment `pypi`; the same on
    test.pypi.org with environment `testpypi`). The Marketplace and Open VSX need tokens he stores
