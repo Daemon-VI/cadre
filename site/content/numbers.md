@@ -104,9 +104,10 @@ live response or error.
   both capstones no review was independent at all.
 - **Forecasts are rough.** They were off by up to 4.4× (`startup-company`) before recalibration, and
   2.3× low on capstone 2, because history is kept per org, not per project size.
-- **Tested by hand on Windows only.** A CI matrix for Windows, macOS and Ubuntu is written but has
-  not run yet.
-- **The dashboard has never been checked in a browser.**
+- **Tested by hand on Windows only.** CI runs the tests on Windows, macOS and Ubuntu with Python
+  3.12 and 3.13.
+- **The dashboard has been checked on screen only in headless Edge** (2026-09-19, at desktop and
+  phone width and in dark mode), which found and fixed six rendering faults.
 - **Interrupted time is lost from `active_seconds`**: capstone 1's first 485 s are missing, so
   `max_minutes` undercounts interrupted runs.
 - **Free tiers change without notice.** Preset limits are dated starting values (checked

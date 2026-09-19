@@ -112,8 +112,8 @@ cadre ui                            # opens the browser with the access token in
 ```
 
 To reach it through a Tailscale name or from a container, add `--allowed-host NAME` (repeatable,
-exact names only); any other `Host` is still refused. The dashboard has not yet been checked in a
-browser (see [Measured numbers](numbers.html#limitations)).
+exact names only); any other `Host` is still refused. The dashboard has been checked on screen in
+headless Edge only (see [Measured numbers](numbers.html#limitations)).
 
 ## Your own organisation
 

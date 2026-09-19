@@ -14,17 +14,18 @@ some verifying, some deciding". The refined statement and the three design drive
 `SRS.md` §1.
 
 ## Status: 1.0.0 released 2026-09-19
-_One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D5); see "1.0.0 release"
-below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
+_One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D3, D5; the VS Code
+extension, D4, is built but not published); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
 
 ## 1.0.0 release (2026-09-19, `PROMPT_RELEASE.md`)
 
-Tag `v1.0.0` on c0073ba (CI green on that commit, 10 jobs). Release run 35436705812, attempt 1:
+Tag `v1.0.0` on c0073ba (CI green on that commit: 9 jobs, plus the docs-site build and deploy). Release run 35436705812, attempt 1:
 wheel/sdist, three standalone builds, container image and GitHub Release **succeeded**; TestPyPI
 failed with `invalid-publisher` (the OIDC claims were exactly `Daemon-VI/cadre`, `release.yml`,
 environment `testpypi`), so PyPI was skipped. Nothing had been uploaded, so the failed jobs were
-re-run on the same tag after Rithik fixed each site's pending publisher: TestPyPI passed on attempt
-3, PyPI on attempt 4. The run is now green end to end; no version was burned.
+re-run on the same tag after Rithik fixed each site's pending publisher: TestPyPI failed on attempts
+1–3 and passed on attempt 4 (11:21Z); PyPI failed on attempt 4 and passed on attempt 5 (upload
+11:34:36Z). The run is now green end to end; no version was burned.
 
 ### Published channels
 
@@ -34,7 +35,7 @@ re-run on the same tag after Rithik fixed each site's pending publisher: TestPyP
 | GHCR | 1.0.0, 1.0, latest, sha-c0073ba | ghcr.io/daemon-vi/cadre | anonymous pull token → manifest 200 for `1.0.0` and `latest` (so the package is public). Not run on this laptop: Docker Desktop was stopped and 0.9 GB RAM was free. The release job's smoke test ran it as uid 10001, `--version`, and a demo run that succeeded |
 | MCP from PyPI | 1.0.0 | `uvx --from "cadre-ai[mcp]" cadre mcp` | **Claude Code 2.1.278**: `claude mcp add --scope project` in a scratch fixture, then `claude -p --mcp-config .mcp.json`: 5 tools; `cadre_list_orgs` → 5 templates; `cadre_forecast` → `cannot_run` (scratch home, no key), "no history, estimated from template size". **VS Code 1.138** (isolated instance, `.vscode/mcp.json`, *MCP: List Servers → Start Server*): uv installed 50 packages, log "Discovered 5 tools"; no agent-mode call (needs a Copilot sign-in). **Antigravity**: not found on this laptop |
 | GitHub Action | `v1` → c0073ba | `uses: Daemon-VI/cadre@v1` | `cadre-action-demo` switched to `@v1`; issue #4 (labelled) → run `20260919-101549-2299e0` succeeded → PR #5 (+1 line, a docstring; 19 calls, 33,835 + 1,554 tokens; reviewer used Qwen and gpt-oss) |
-| TestPyPI | 1.0.0 | test.pypi.org/project/cadre-ai | third attempt at the job, after Rithik corrected the pending publisher (the first two: `invalid-publisher`). Both files' SHA-256 match the GitHub Release (`6c7f593f…` wheel, `fcbb4de9…` sdist) |
+| TestPyPI | 1.0.0 | test.pypi.org/project/cadre-ai | fourth attempt at the job, after Rithik corrected the pending publisher (the first three: `invalid-publisher`). Both files' SHA-256 match the GitHub Release (`6c7f593f…` wheel, `fcbb4de9…` sdist) |
 | **PyPI** | **1.0.0** | pypi.org/project/cadre-ai | second attempt, after Rithik corrected the pypi.org publisher (the first: `invalid-publisher` for environment `pypi`; nothing uploaded). Same SHA-256 as above. From a clean uv cache and a new `CADRE_HOME`: `uvx --from cadre-ai cadre --version` → `cadre 1.0.0`, a `decision-board --demo` run succeeded, and `uvx cadre-ai --version` works too. `pipx` is not installed here, so `pipx install` was not tried |
 | VS Code Marketplace / Open VSX | — | — | not published: `VSCE_PAT` and `OVSX_PAT` are not set |
 | GitHub Marketplace | v1.0.0 | github.com/marketplace/actions/cadre-finish-this-project | listed by Rithik on the release page (2026-09-19); the page names Daemon-VI/cadre and v1.0.0 |
@@ -149,7 +150,8 @@ Also noted: after a Reject, the engine asks again on the agent's next `run_check
   (capstone 1's first 485 s are missing), so `max_minutes` undercounts interrupted runs.
 - Forecast history is per org, not per project size (capstone 2 was 2.3× over a measured n = 1
   taken on a 300-token fixture).
-- The dashboard has never been seen in a browser (Chrome extension not connected).
+- The dashboard was first seen on screen on 2026-09-19, in headless Edge (see "1.0.0 release"); a
+  person has not yet used it in a normal browser session.
 - Gemini, Mistral, Z.ai limits are conservative guesses or third-party reports (`presets.py`
   marks each); the header learning corrects them only where a provider sends headers.
 - Checks are not sandboxed (ADR-006). Use `--allow-exec` only for goals you trust.
@@ -191,8 +193,8 @@ the Chrome extension was not connected.
 package where `word_count` works and `top_words` and `reading_time` are stubs, so 5 of 7 unittest
 tests fail. `.cadre/checks.yaml` runs the tests. A reference implementation passed all 7 before
 publishing. The repository has the `cadre` label and "Allow GitHub Actions to create pull
-requests" on. Rithik set both secrets himself with `gh secret set`. The workflow pins a Cadre
-commit, because no `v1` tag exists.
+requests" on. Rithik set both secrets himself with `gh secret set`. The workflow pinned a Cadre
+commit until 1.0.0; since then it uses `Daemon-VI/cadre@v1`.
 
 | Run | Trigger | Outcome | What it exposed |
 |---|---|---|---|
@@ -200,10 +202,9 @@ commit, because no `v1` tag exists.
 | — | `/cadre …` comment sent from Git Bash | **skipped**, correctly | MSYS path conversion rewrote the body to `C:/Program Files/Git/cadre …`, so the trigger guard rejected it (`MSYS_NO_PATHCONV=1`) |
 | 2 (`20260919-052024-b28d53`) | `/cadre …` comment | `unapproved`, 0 commits, no PR, report and usage on the issue: 23 calls, 50,112 + 3,433 tokens, ~12 min | (a) the `GEMINI_API_KEY` secret was invalid, and Google's 400 bad-key reply was retried on five models on every call, leaving everything on Groq's 8,000 TPM (each engineer call waited ~58 s); (b) `edit_file` failed on two identical `raise NotImplementedError` lines ("matches 2 times" / "0 times") until the engineer ran out of turns; (c) **the engineer said "Implemented…" but the `tests` check failed, and the gate held** |
 | 3 (`20260919-061803-9643b6`) | `/cadre …` comment | **succeeded → [PR #2](https://github.com/Daemon-VI/cadre-action-demo/pull/2)**, 1 commit, +19/−2 in `textstats/core.py`: 18 calls, 31,067 + 3,155 tokens, ~7 min | with the fixes in place, one edit missed and the error pointed at the right line, and the next two edits landed. The engineer's own `run_check` and the engine's gate both passed. **All 7 tests passed when re-run by hand on the PR branch.** The commit is attributed to Daemon-VI. The Gemini key was skipped before the run ("key rejected") |
-
 | 4 (`20260919-064319-530a99`) | `/cadre …` comment, after the Gemini secret was fixed | **succeeded → [PR #3](https://github.com/Daemon-VI/cadre-action-demo/pull/3)**, +13/−2: 18 calls, 40,354 + 2,582 tokens, **~75 s** | both keys passed the pre-run check. The engineer used gemini-3.6/3.5-flash, the lead used gemini-3.8-flash and gpt-oss-120b, and the **reviewer used gpt-oss-120b, a different family from the engineer, so the review was independent**. The first check failed, one more edit fixed it, and the check passed. **All 7 tests passed when re-run by hand on the PR branch.** Spreading the load over two providers took the run from ~7 min to ~75 s |
 
-Fixes (b1641fd, a6226ff; 205 tests):
+Fixes (b1641fd, a6226ff, f9aace4; 205 tests):
 - No PR for an empty branch; the comment then carries the report.
 - The timeline goes to the log, and REPORT/plan to an artifact.
 - Google's 400 bad-key reply is `AuthFailed`, in chat and in `health()`.
@@ -218,11 +219,11 @@ being displayed. It is Google's newer format (`AQ.` + 50 characters, HTTP 200 on
 `tools/check_history.py` now recognises as well (cd19220).
 
 **Still open:**
-- Both PRs (#2 and #3) are open. Merging one is Rithik's call.
+- ~~Both PRs open~~: on Rithik's yes, #3 was merged and #2 closed pointing to it (2026-09-19).
 - The lead's report says "`pytest`… all tests pass"; the check actually ran `unittest`. This is
   model wording, and the gate result itself is accurate.
 - A runner starts with an empty usage ledger, so "left today" is always the full free limit.
-- Not listed on the Marketplace.
+- ~~Not on the Marketplace~~: listed since 1.0.0.
 
 History scan before going public: the only non-generic personal string left in old commits is
 the author's local Windows home path (his first name) in four commits made before the paths were generalised (1c4e843 removed them).
@@ -231,11 +232,11 @@ No other account's name, no email address, and no key appears anywhere.
 | Step | State | Evidence observed 2026-09-18 |
 |---|---|---|
 | **D0** open source | built | `LICENSE` (canonical Apache-2.0, sha256 cfc7749b…d30); README rewritten for strangers; `SECURITY.md`, `CONTRIBUTING.md`, templates. `/api/v1` pinned by an OpenAPI snapshot (24 paths, then 24 + `tail`); `serve --allowed-host`; scheduler on Linux (systemd) and macOS (launchd), generated by tested code. `tools/check_licences.py`: 31 runtime deps pass, and 52 with `[mcp]`; certifi is MPL-2.0, allowed by name (ADR-030). `tools/check_history.py`: every commit is the owner identity, no private user name, no key shapes. **CI green on 2026-09-19** (table above) |
-| **D1** packages | **published 1.0.0** (2026-09-19; see "Published channels") | `tools/wheel_smoke.py`: `cadre_ai-0.1.0-py3-none-any.whl`, 43 files, 135 KiB; installed in a clean venv, `cadre` and `cadre-ai` both work, and the demo run succeeded. `release.yml` (TestPyPI → PyPI by trusted publishing, three-OS PyInstaller builds with a smoke test, GHCR image smoke-tested for uid 10001 and a demo run) **built and smoke-tested on all three OSs by a manual run on 2026-09-19; nothing published**. `cadre-ai` was still free on PyPI on 2026-09-18 |
+| **D1** packages | **published 1.0.0** (2026-09-19; see "Published channels") | Published wheel `cadre_ai-1.0.0-py3-none-any.whl`, 146,808 bytes (earlier, on 2026-09-18, `tools/wheel_smoke.py` checked the 0.1.0 wheel in a clean venv: `cadre` and `cadre-ai` both work, and the demo run succeeded). `release.yml`: TestPyPI → PyPI by trusted publishing, three-OS PyInstaller builds with a smoke test, and a GHCR image smoke-tested for uid 10001 and a demo run |
 | **D2** MCP | **verified from PyPI** in Claude Code 2.1.278 and VS Code 1.138's MCP client (2026-09-19; see "Published channels"). Before that: | Six MCP tests. Real stdio (`tools/mcp_smoke.py`): five tools, auto-started server, token in no result. **Claude Code 2.1.276** called `cadre_list_orgs`, `cadre_forecast` and `cadre_usage` from a fixture repo. **Found:** on Windows, the SDK client and Claude Code put stdio servers in a kill-on-close job object, so an auto-started `cadre serve` dies with the session. Breakaway is refused, and escaping via WMI was rejected as evasion-like. The start-run result now says so and points to `cadre resume` (ADR-027) |
-| **D3** Action | **verified 2026-09-19** | See "D3 on a real repository" below. Built: `action.yml` (composite; engine from the action's own source), `examples/github-action/cadre.yml` (OWNER, MEMBER or COLLABORATOR only; contents, pull-requests and issues write), `provider add-from-env`, `run --result-json`; test of the PR body, parked comment and trigger rules. **The real run on a demo repo is pending**: it needs the workflow scope, the public switch, the demo repo and his secret |
-| **D4** VS Code extension | **seen on screen 2026-09-19**, not published | `editors/vscode`: no runtime dependencies. `tsc` and `eslint` clean (eslint bans innerHTML and similar), 70 of 70 unit tests, `.vsix` 28.33 KB. **The integration suite passed 4 of 4 inside the installed VS Code** (isolated profile, via `CADRE_VSCODE_EXE`). The `.vsix` installed into his VS Code as `daemon-vi.cadre@0.1.0` and was uninstalled again. The agent's live API smoke test: demo run streamed, dirty tree refused, 7 exec approvals rejected, review-branch diff listed 3 files. **Not observed:** the tree, the webview, the modals and the diff views on screen (no GUI automation here). Not published |
-| **D5** docs site | built | `site/`: nine pages; `build.py` generates them with markdown-it and no framework, pulling the M5/M11 tables from this file at build time. 186 internal links resolve; all pages returned 200 locally; 137,850 bytes. The replay is run `20260917-230536-aa0587` (54 events, 14 calls, 145.76 s) and the scrub check is clean. **Not seen in a browser.** Pages is not enabled, and on a private repo it needs a paid plan |
+| **D3** Action | **verified 2026-09-19** | See "D3 on a real repository" below. Built: `action.yml` (composite; engine from the action's own source), `examples/github-action/cadre.yml` (OWNER, MEMBER or COLLABORATOR only; contents, pull-requests and issues write), `provider add-from-env`, `run --result-json`; test of the PR body, parked comment and trigger rules. Real runs: PRs #2, #3 and (through `@v1`) #5 on `cadre-action-demo` |
+| **D4** VS Code extension | **seen on screen 2026-09-19**, not published | `editors/vscode`: no runtime dependencies. `tsc` and `eslint` clean (eslint bans innerHTML and similar), 72 of 72 unit tests (70 on 2026-09-18), `.vsix` 28.54 KB. **The integration suite passed 4 of 4 inside the installed VS Code** (isolated profile, via `CADRE_VSCODE_EXE`). The `.vsix` installed into his VS Code as `daemon-vi.cadre@0.1.0` and was uninstalled again. The agent's live API smoke test: demo run streamed, dirty tree refused, 7 exec approvals rejected, review-branch diff listed 3 files. On screen on 2026-09-19 (see "1.0.0 release"): Forecast, Start run, the live run view, the approval notification and Review branch's diff. The Runs tree itself was not looked at. Not published |
+| **D5** docs site | **live** | `site/`: nine pages; `build.py` generates them with markdown-it and no framework, pulling the M5/M11 tables from this file at build time. 186 internal links resolve; all pages returned 200 locally; 137,850 bytes. The replay is run `20260917-230536-aa0587` (54 events, 14 calls, 145.76 s) and the scrub check is clean. **Live since 2026-09-19** at daemon-vi.github.io/cadre (every page returns 200) |
 | **D6** desktop | skipped | Rithik's decision, 2026-09-18 |
 | **D7** hosted | deferred | Stays behind M12 and M13 (ROADMAP) |
 
@@ -506,7 +507,7 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 ## Definition of done for v1.0 (checked 2026-09-18)
 | Item | State | Evidence |
 |---|---|---|
-| Every FR has a passing test; traceability complete; ruff clean | met | TEST_PLAN v0.1 + v1.0 tables; 170 passed, 1 skipped; `ruff check` clean |
+| Every FR has a passing test; traceability complete; ruff clean | met | TEST_PLAN v0.1 + v1.0 tables; 170 passed, 1 skipped on 2026-09-18 (208 at release); `ruff check` clean |
 | Every template ran at least once on live free keys, numbers recorded | met | M5 table (five templates) |
 | Capstone results with raw numbers | met | M11 table (both succeeded) |
 | No key value in the repo, the database, `~/.cadre` | met | `git grep` finds five fake fixtures and two prefix-name docs; a content scan of `~/.cadre` (incl. `cadre.sqlite*`) for full-length Groq/Google key shapes found none; planted-key tests pass |
@@ -514,8 +515,7 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 | Server RSS measured while a run streams | met | 64.5 MB idle, 72.9 MB peak while a live run streamed 55 events through the dashboard's stream endpoint (curl as the client; the dashboard itself has not been seen in a browser) |
 | Docs match the code (`claim-auditor`) | met | audit 2026-09-18: every live number matched the store; its stale/unsupported items were corrected in the same commit |
 
-**Therefore v1.0.0 is not tagged.** `pyproject.toml` and `__init__.py` stay at 0.1.0 and
-`CHANGELOG.md` says "1.0.0 — unreleased".
+Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 release").
 
 ## Where to pick up
 1. **Next: `ROADMAP.md` M12**, the container runner for checks (checks are not sandboxed today).

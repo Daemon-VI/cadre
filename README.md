@@ -92,7 +92,8 @@ of it (ADR-024):
   Only the owner, members and collaborators can trigger it. Copy
   [`examples/github-action/cadre.yml`](https://github.com/Daemon-VI/cadre/blob/main/examples/github-action/cadre.yml) and add a free key as a
   repository secret.
-- **VS Code extension** (Marketplace and Open VSX, so also Antigravity, Cursor and Windsurf): see
+- **VS Code extension** (not published yet; it will go to the Marketplace and Open VSX, so also
+  Antigravity, Cursor and Windsurf): build it from
   [`editors/vscode`](https://github.com/Daemon-VI/cadre/tree/main/editors/vscode).
 - **Container:** `ghcr.io/daemon-vi/cadre`, non-root, state in `/data`, keys from environment
   variables. See [`compose.yaml`](compose.yaml).

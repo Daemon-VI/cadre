@@ -8,7 +8,8 @@ description: Runs, usage and approvals inside VS Code, and in Antigravity, Curso
 > **Not yet published.** The extension lives in
 > [`editors/vscode/`](https://github.com/Daemon-VI/cadre/tree/main/editors/vscode) and will be
 > published to the VS Code Marketplace and to Open VSX, so Antigravity, Cursor and Windsurf can
-> install it too. Nothing on this page has been checked in an editor yet.
+> install it too. On 2026-09-19 it was used in VS Code 1.138 on a test repository: Forecast, Start
+> run, the live run view, the approval notification and Review branch all worked.
 
 ## What it is for
 
