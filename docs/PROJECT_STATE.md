@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (1.1.0 released; M13 done on `main` except OIDC — phase 1 accounts + phase 2 teams/budgets/allowances/routing; all unreleased; next: M14)_
+_Last updated: 2026-09-19 (1.2.0 released — ships M13, accounts + teams, except OIDC; `v1` moved to 1.2.0; next: M14, memory across runs)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,9 +13,38 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: 1.1.0 released; M13 done on `main` except OIDC (accounts + teams), unreleased
+## Status: 1.2.0 released (M13 shipped, accounts + teams, except OIDC); `v1` on 1.2.0
 _One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D3, D5; the VS Code
 extension, D4, is built but not published); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
+
+## 1.2.0 release (2026-09-19, `PROMPT_M14.md` §2)
+
+Ships all of M13 (accounts + teams). Tag `v1.2.0` = commit `215045f`. Also in it: a refused exec
+approval now holds for the whole run (ADR-035) — before, the next `run_check` re-asked.
+
+**Migration proven on a real 1.1.0 install before tagging.** In a fresh `CADRE_HOME`,
+`uvx --from cadre-ai==1.1.0 cadre run decision-board … --demo` twice wrote **schema v2** with 2
+runs (51 events each). The `main` build then opened the same home: `PRAGMA user_version` = **4**,
+both runs still listed with their 51 events, the M13 tables present (`users`, `tokens`, `audit`,
+`teams`, `team_members`, `team_budget`, `team_allow`), and `cadre team list` = "No teams yet."
+
+**Channels verified.**
+- **PyPI**: after the index/JSON lag cleared, `uvx --from cadre-ai==1.2.0 cadre --version` =
+  `cadre 1.2.0`; a `decision-board … --demo` run succeeded; `cadre team list` works.
+- **SHA-256 match** PyPI ↔ GitHub Release: wheel `f07a86e6…`, sdist `d22e9ff2…` (identical).
+- **Windows build**: `cadre-1.2.0-windows-x86_64.zip` downloaded and run → `cadre 1.2.0`.
+- **GHCR image**: the release `container image` job (build + smoke test + push) succeeded; Docker
+  is not run on this laptop, so that CI job is the evidence.
+- Release run `35455286961`: all 8 jobs success (dist, testpypi, pypi, image, 3 standalone,
+  github-release).
+
+**`v1` moved to 1.2.0.** Verified first: the demo workflow was pointed at `Daemon-VI/cadre@v1.2.0`,
+issue #10 on `cadre-action-demo` triggered a run that succeeded and opened **PR #11** — one-line
+title, body ending `Closes #10`, the 2-line docstring diff, its `pytest` check green. Then `v1`
+(annotated) was force-pushed to `215045f`; `refs/tags/v1^{}` = `215045f`. The workflow was set
+back to `@v1`. The Marketplace page lists `v1.2.0` (newest non-draft release → latest offered).
+Demo PRs #5, #7, #9 (and the verification #11) closed unmerged with comments; fixture `main`
+unchanged.
 
 ## M13 phase 2 — teams, budgets, model allowances, action routing — DONE on `main`, 2026-09-19
 
@@ -673,33 +702,29 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 release").
 
 ## Where to pick up
-1. **Next: `ROADMAP.md` M14** — memory across runs. (M13 is done on `main` except OIDC SSO,
-   which is deferred to M13.1 — it needs a real identity provider and can't be tested offline.)
-   A 1.2.0 release carrying all of M13 (accounts + teams) needs Rithik's yes; it is a new feature.
+1. **Next: `ROADMAP.md` M14** — memory across runs (in progress this session; see the M14 section
+   when written). A 1.3.0 release carrying M14 needs Rithik's yes.
 2. Waiting on Rithik, each his call:
-   - **Release 1.2.0** to ship M13 (accounts + teams), or hold it for OIDC (M13.1).
-   - **Publish the security advisory** for the MCP `allow_exec` bypass. Draft text is in
-     `docs/SECURITY_ADVISORY_DRAFT.md`: affected 1.0.0/1.0.1, fixed 1.1.0. Create it under the
-     repo's Security → Advisories (GHSA); publishing is his act.
+   - **Publish the security advisory** for the MCP `allow_exec` bypass (he did NOT tick creating
+     the draft this round). Draft text is in `docs/SECURITY_ADVISORY_DRAFT.md`: affected
+     1.0.0/1.0.1, fixed 1.1.0. Create it under the repo's Security → Advisories (GHSA); publishing
+     is his act.
    - **VS Code extension publish**: `gh secret list` shows no secrets, and the `vscode-marketplace`
      environment the publish job uses does not exist yet. He creates the publisher `daemon-vi` on
      the VS Code Marketplace, both tokens, and runs `gh secret set VSCE_PAT` / `gh secret set
-     OVSX_PAT` himself. Then set the extension to 1.1.0, and a `vscode-v1.1.0` tag publishes both.
+     OVSX_PAT` himself. Then set the extension to 1.2.0, and a `vscode-v1.2.0` tag publishes both.
      The Open VSX namespace `daemon-vi` may need creating once (`npx ovsx create-namespace` from a
      workflow step, never with the token on a command line).
    - **Agent-mode MCP call in VS Code** (needs his Copilot sign-in), and **Antigravity**, which he
      said he has but which was not found on this laptop.
-   - Demo PRs #5 and #7 on `cadre-action-demo` are open; merging or closing them is his call.
-   - Consider a short GitHub security advisory for 1.0.0/1.0.1 (the MCP `allow_exec` bypass), now
-     that 1.1.0 fixes it.
-3. Known and not yet fixed: after a Reject, the engine asks for exec approval again on the agent's
-   next `run_check`. A runner's usage ledger starts empty, so the Action's "left today" is always
-   the full free limit. Containment is proven on Linux only (see "M12").
+3. Known and not yet fixed: a runner's usage ledger starts empty, so the Action's "left today" is
+   always the full free limit. Containment is proven on Linux only (see "M12"). (The post-Reject
+   exec re-ask is **fixed** in 1.2.0, ADR-035.)
 4. Done, for the record: keys rotated (a new key goes in with `provider key <id>`, not `provider
    add`); the scheduler job is installed (every 30 min; remove with `cadre scheduler uninstall`);
    the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0,
-   1.0.1 and 1.1.0 releases; M12; `v1` moved to 1.1.0 (proven on the demo repo, PR #9); M13 on
-   `main` (accounts + teams, all but OIDC).
+   1.0.1, 1.1.0 and **1.2.0** releases; M12; `v1` moved to **1.2.0** (proven on the demo repo,
+   PR #11); M13 shipped in 1.2.0 (accounts + teams, all but OIDC); demo PRs #5/#7/#9/#11 closed.
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`
