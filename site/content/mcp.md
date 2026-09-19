@@ -22,9 +22,8 @@ uvx --from "cadre-ai[mcp]" cadre mcp
 Each snippet below was checked against the host's own documentation on 2026-09-18. Hosts change
 their config formats; if one stops working, the linked page is the authority.
 
-> **Not on PyPI yet**, so `uvx --from "cadre-ai[mcp]"` cannot resolve today. From a clone, the
-> command would be `uv run --project /path/to/cadre --extra mcp cadre mcp`. That form has not been
-> tried in any host.
+> From a clone instead of PyPI, the command would be
+> `uv run --project /path/to/cadre --extra mcp cadre mcp`. That form has not been tried in any host.
 
 ## Which folder a run works on
 
@@ -137,4 +136,6 @@ The tools cannot approve, add providers or read keys, and the API token appears 
 | Host | What was observed | When |
 |---|---|---|
 | A real stdio client (the MCP SDK's `Client` spawning `cadre mcp`, `tools/mcp_smoke.py`) | Five tools listed. `cadre serve` started detached on a spare port. Orgs, forecast (`cannot_run` with no key) and usage answered. The token appeared in no result, and the server was stopped afterwards | 2026-09-18 |
-| Claude Code, VS Code, Cursor, Windsurf, Antigravity | **Unverified in the host itself.** The package isn't on PyPI yet | — |
+| Claude Code 2.1.278, from PyPI (`claude mcp add --scope project cadre -- uvx --from "cadre-ai[mcp]" cadre mcp` in a fixture repo, then `claude -p` with `--mcp-config .mcp.json`) | Five tools listed; `cadre_list_orgs` returned the five templates; `cadre_forecast` answered `cannot_run` (no key in that `CADRE_HOME`), "no history, estimated from template size", median 8.5 calls / 22,502 tokens | 2026-09-19 |
+| VS Code 1.138, from PyPI (`.vscode/mcp.json`, *MCP: List Servers → Start Server*) | VS Code started `uvx --from cadre-ai[mcp] cadre mcp` and logged "Discovered 5 tools". A tool call from agent mode needs a Copilot sign-in, so it was not made | 2026-09-19 |
+| Cursor, Windsurf, Antigravity | Unverified in the host itself (Antigravity was not found on the test laptop) | — |

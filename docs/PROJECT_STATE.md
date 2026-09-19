@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (1.0.0 tagged: GitHub Release, GHCR and the Action's `v1` live; PyPI blocked on the TestPyPI publisher; dashboard and extension seen on screen)_
+_Last updated: 2026-09-19 (1.0.0 released: PyPI, TestPyPI, GHCR, GitHub Release, the Action's `v1` and Marketplace listing; MCP checked from PyPI in Claude Code and VS Code; next: M12)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,18 +13,18 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: 1.0.0 tagged and released 2026-09-19 — PyPI still pending
+## Status: 1.0.0 released 2026-09-19
 _One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D5); see "1.0.0 release"
 below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
 
 ## 1.0.0 release (2026-09-19, `PROMPT_RELEASE.md`)
 
-Tag `v1.0.0` on c0073ba (CI green on that commit, 10 jobs). Release run 35436705812: wheel/sdist,
-three standalone builds, container image and GitHub Release **succeeded**; **TestPyPI failed** with
-`invalid-publisher` (the OIDC claims were exactly `Daemon-VI/cadre`, `release.yml`, environment
-`testpypi`, so test.pypi.org has no matching pending publisher), and PyPI was skipped because it
-needs TestPyPI. Nothing was uploaded, so once Rithik adds the publisher the two jobs are re-run on
-the same tag; no new version is needed.
+Tag `v1.0.0` on c0073ba (CI green on that commit, 10 jobs). Release run 35436705812, attempt 1:
+wheel/sdist, three standalone builds, container image and GitHub Release **succeeded**; TestPyPI
+failed with `invalid-publisher` (the OIDC claims were exactly `Daemon-VI/cadre`, `release.yml`,
+environment `testpypi`), so PyPI was skipped. Nothing had been uploaded, so the failed jobs were
+re-run on the same tag after Rithik fixed each site's pending publisher: TestPyPI passed on attempt
+3, PyPI on attempt 4. The run is now green end to end; no version was burned.
 
 ### Published channels
 
@@ -32,8 +32,10 @@ the same tag; no new version is needed.
 |---|---|---|---|
 | GitHub Release | 1.0.0 | github.com/Daemon-VI/cadre/releases/tag/v1.0.0 | 5 assets (wheel, sdist, Windows/macOS-arm64/Linux builds). The Windows zip, downloaded with `gh release download` into a clean folder: `cadre 1.0.0`, and `run decision-board … --demo` succeeded |
 | GHCR | 1.0.0, 1.0, latest, sha-c0073ba | ghcr.io/daemon-vi/cadre | anonymous pull token → manifest 200 for `1.0.0` and `latest` (so the package is public). Not run on this laptop: Docker Desktop was stopped and 0.9 GB RAM was free. The release job's smoke test ran it as uid 10001, `--version`, and a demo run that succeeded |
+| MCP from PyPI | 1.0.0 | `uvx --from "cadre-ai[mcp]" cadre mcp` | **Claude Code 2.1.278**: `claude mcp add --scope project` in a scratch fixture, then `claude -p --mcp-config .mcp.json`: 5 tools; `cadre_list_orgs` → 5 templates; `cadre_forecast` → `cannot_run` (scratch home, no key), "no history, estimated from template size". **VS Code 1.138** (isolated instance, `.vscode/mcp.json`, *MCP: List Servers → Start Server*): uv installed 50 packages, log "Discovered 5 tools"; no agent-mode call (needs a Copilot sign-in). **Antigravity**: not found on this laptop |
 | GitHub Action | `v1` → c0073ba | `uses: Daemon-VI/cadre@v1` | `cadre-action-demo` switched to `@v1`; issue #4 (labelled) → run `20260919-101549-2299e0` succeeded → PR #5 (+1 line, a docstring; 19 calls, 33,835 + 1,554 tokens; reviewer used Qwen and gpt-oss) |
-| PyPI / TestPyPI | — | — | **not published**: `invalid-publisher` on TestPyPI, again on the re-run at 11:09 UTC after Rithik's "done" (same claims), so the test.pypi.org publisher still doesn't match |
+| TestPyPI | 1.0.0 | test.pypi.org/project/cadre-ai | third attempt at the job, after Rithik corrected the pending publisher (the first two: `invalid-publisher`). Both files' SHA-256 match the GitHub Release (`6c7f593f…` wheel, `fcbb4de9…` sdist) |
+| **PyPI** | **1.0.0** | pypi.org/project/cadre-ai | second attempt, after Rithik corrected the pypi.org publisher (the first: `invalid-publisher` for environment `pypi`; nothing uploaded). Same SHA-256 as above. From a clean uv cache and a new `CADRE_HOME`: `uvx --from cadre-ai cadre --version` → `cadre 1.0.0`, a `decision-board --demo` run succeeded, and `uvx cadre-ai --version` works too. `pipx` is not installed here, so `pipx install` was not tried |
 | VS Code Marketplace / Open VSX | — | — | not published: `VSCE_PAT` and `OVSX_PAT` are not set |
 | GitHub Marketplace | v1.0.0 | github.com/marketplace/actions/cadre-finish-this-project | listed by Rithik on the release page (2026-09-19); the page names Daemon-VI/cadre and v1.0.0 |
 
@@ -229,10 +231,10 @@ No other account's name, no email address, and no key appears anywhere.
 | Step | State | Evidence observed 2026-09-18 |
 |---|---|---|
 | **D0** open source | built | `LICENSE` (canonical Apache-2.0, sha256 cfc7749b…d30); README rewritten for strangers; `SECURITY.md`, `CONTRIBUTING.md`, templates. `/api/v1` pinned by an OpenAPI snapshot (24 paths, then 24 + `tail`); `serve --allowed-host`; scheduler on Linux (systemd) and macOS (launchd), generated by tested code. `tools/check_licences.py`: 31 runtime deps pass, and 52 with `[mcp]`; certifi is MPL-2.0, allowed by name (ADR-030). `tools/check_history.py`: every commit is the owner identity, no private user name, no key shapes. **CI green on 2026-09-19** (table above) |
-| **D1** packages | built | `tools/wheel_smoke.py`: `cadre_ai-0.1.0-py3-none-any.whl`, 43 files, 135 KiB; installed in a clean venv, `cadre` and `cadre-ai` both work, and the demo run succeeded. `release.yml` (TestPyPI → PyPI by trusted publishing, three-OS PyInstaller builds with a smoke test, GHCR image smoke-tested for uid 10001 and a demo run) **built and smoke-tested on all three OSs by a manual run on 2026-09-19; nothing published**. `cadre-ai` was still free on PyPI on 2026-09-18 |
-| **D2** MCP | built, verified | Six MCP tests. Real stdio (`tools/mcp_smoke.py`): five tools, auto-started server, token in no result. **Claude Code 2.1.276** called `cadre_list_orgs`, `cadre_forecast` and `cadre_usage` from a fixture repo. **Found:** on Windows, the SDK client and Claude Code put stdio servers in a kill-on-close job object, so an auto-started `cadre serve` dies with the session. Breakaway is refused, and escaping via WMI was rejected as evasion-like. The start-run result now says so and points to `cadre resume` (ADR-027) |
+| **D1** packages | **published 1.0.0** (2026-09-19; see "Published channels") | `tools/wheel_smoke.py`: `cadre_ai-0.1.0-py3-none-any.whl`, 43 files, 135 KiB; installed in a clean venv, `cadre` and `cadre-ai` both work, and the demo run succeeded. `release.yml` (TestPyPI → PyPI by trusted publishing, three-OS PyInstaller builds with a smoke test, GHCR image smoke-tested for uid 10001 and a demo run) **built and smoke-tested on all three OSs by a manual run on 2026-09-19; nothing published**. `cadre-ai` was still free on PyPI on 2026-09-18 |
+| **D2** MCP | **verified from PyPI** in Claude Code 2.1.278 and VS Code 1.138's MCP client (2026-09-19; see "Published channels"). Before that: | Six MCP tests. Real stdio (`tools/mcp_smoke.py`): five tools, auto-started server, token in no result. **Claude Code 2.1.276** called `cadre_list_orgs`, `cadre_forecast` and `cadre_usage` from a fixture repo. **Found:** on Windows, the SDK client and Claude Code put stdio servers in a kill-on-close job object, so an auto-started `cadre serve` dies with the session. Breakaway is refused, and escaping via WMI was rejected as evasion-like. The start-run result now says so and points to `cadre resume` (ADR-027) |
 | **D3** Action | **verified 2026-09-19** | See "D3 on a real repository" below. Built: `action.yml` (composite; engine from the action's own source), `examples/github-action/cadre.yml` (OWNER, MEMBER or COLLABORATOR only; contents, pull-requests and issues write), `provider add-from-env`, `run --result-json`; test of the PR body, parked comment and trigger rules. **The real run on a demo repo is pending**: it needs the workflow scope, the public switch, the demo repo and his secret |
-| **D4** VS Code extension | built, verified in part | `editors/vscode`: no runtime dependencies. `tsc` and `eslint` clean (eslint bans innerHTML and similar), 70 of 70 unit tests, `.vsix` 28.33 KB. **The integration suite passed 4 of 4 inside the installed VS Code** (isolated profile, via `CADRE_VSCODE_EXE`). The `.vsix` installed into his VS Code as `daemon-vi.cadre@0.1.0` and was uninstalled again. The agent's live API smoke test: demo run streamed, dirty tree refused, 7 exec approvals rejected, review-branch diff listed 3 files. **Not observed:** the tree, the webview, the modals and the diff views on screen (no GUI automation here). Not published |
+| **D4** VS Code extension | **seen on screen 2026-09-19**, not published | `editors/vscode`: no runtime dependencies. `tsc` and `eslint` clean (eslint bans innerHTML and similar), 70 of 70 unit tests, `.vsix` 28.33 KB. **The integration suite passed 4 of 4 inside the installed VS Code** (isolated profile, via `CADRE_VSCODE_EXE`). The `.vsix` installed into his VS Code as `daemon-vi.cadre@0.1.0` and was uninstalled again. The agent's live API smoke test: demo run streamed, dirty tree refused, 7 exec approvals rejected, review-branch diff listed 3 files. **Not observed:** the tree, the webview, the modals and the diff views on screen (no GUI automation here). Not published |
 | **D5** docs site | built | `site/`: nine pages; `build.py` generates them with markdown-it and no framework, pulling the M5/M11 tables from this file at build time. 186 internal links resolve; all pages returned 200 locally; 137,850 bytes. The replay is run `20260917-230536-aa0587` (54 events, 14 calls, 145.76 s) and the scrub check is clean. **Not seen in a browser.** Pages is not enabled, and on a private repo it needs a paid plan |
 | **D6** desktop | skipped | Rithik's decision, 2026-09-18 |
 | **D7** hosted | deferred | Stays behind M12 and M13 (ROADMAP) |
@@ -516,36 +518,25 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 `CHANGELOG.md` says "1.0.0 — unreleased".
 
 ## Where to pick up
-1. ~~Rotate the pasted keys~~: done 2026-09-19. To put a new key into the local credential store,
-   use `uv run cadre provider key groq` (then `gemini`). `provider add` keeps a key it already
-   finds and says how to replace it.
-2. Then release: set 1.0.0 in `pyproject.toml` and `src/cadre/__init__.py`, date the CHANGELOG
-   entry, update the README quick start (add a key → forecast → run → review the branch),
-   commit, and create the local tag `v1.0.0`.
-3. Look at the dashboard in a browser (Runs, Usage, Models & keys, a parked run).
-4. Done 2026-09-18 on Rithik's yes: Task Scheduler job "Cadre - resume parked runs", every 30 min,
-   runs `.venv\Scripts\pythonw.exe -m cadre.scheduled` (no console window; output in
-   `~/.cadre/logs/scheduler.log`). Triggered once by hand: log "No parked run is due.", exit 0,
-   Last Result 0. Remove with `uv run cadre scheduler uninstall`. Before installing, two fixes
-   (172 passed): the job used `python.exe` (a window every 30 min), and a run heartbeat only on
-   events, so a model call or quota wait > 90 s let the job's `resume --due` mark a live run
-   interrupted — runs now heartbeat every 20 s as well.
-5. Done 2026-09-18: private `Daemon-VI/cadre` created on Rithik's yes, `main` pushed. Tags and
-   visibility still need his yes; CI needs a `gh` token with the `workflow` scope.
-6. ~~Workflow scope, then CI~~: done on 2026-09-19. CI is green on every OS (see the distribution table).
-7. ~~D0 gate~~: done 2026-09-19. The repo is public, Pages is live and private vulnerability
-   reporting is on.
-8. ~~D3 real test~~: **done 2026-09-19**, PR #2 (Groq only) and PR #3 (Gemini + Groq, independent
-   review, ~75 s) on `cadre-action-demo` (see "D3 on a real repository"). Ask before listing the
-   action on the Marketplace, and before pushing a `v1` tag.
-9. **First publishes:** each needs his yes. PyPI needs a pending publisher on pypi.org (owner
-   `Daemon-VI`, repository `cadre`, workflow `release.yml`, environment `pypi`; the same on
-   test.pypi.org with environment `testpypi`). The Marketplace and Open VSX need tokens he stores
-   with `gh secret set VSCE_PAT` / `OVSX_PAT`. GHCR needs a `v*` tag.
-10. **1.0.0** (one release, decided 2026-09-19; `docs/PROMPT_RELEASE.md`): tag, verify each channel
-    from a clean environment, run `claim-auditor` over the README, the site and this file.
-11. After 1.0.0: `ROADMAP.md` M12 (container runner for checks).
+1. **Next: `ROADMAP.md` M12**, the container runner for checks (checks are not sandboxed today).
+2. Waiting on Rithik, each his call:
+   - **1.0.1 and moving `v1`**: `main` has fixes that 1.0.0 lacks. Among them are the Action's PR
+     title and `Closes #N`, and the dashboard's null callouts. Release: bump the version in
+     `pyproject.toml` and `src/cadre/__init__.py`, date a CHANGELOG entry, push `v1.0.1`
+     (publishes everywhere), then move `v1`.
+   - **VS Code extension publish**: he sets `VSCE_PAT` and `OVSX_PAT` with `gh secret set`, then a
+     `vscode-v0.1.0` tag publishes to both registries. The build must include b2c0bae (the exec
+     approval is a notification; a poll never opens the modal).
+   - **Agent-mode MCP call in VS Code** (needs his Copilot sign-in), and **Antigravity**, which he
+     said he has but which was not found on this laptop.
+3. Known and not yet fixed: after a Reject, the engine asks for exec approval again on the agent's
+   next `run_check`. A runner's usage ledger starts empty, so the Action's "left today" is always
+   the full free limit.
+4. Done, for the record: keys rotated (a new key goes in with `provider key <id>`, not `provider
+   add`); the scheduler job is installed (every 30 min; remove with `cadre scheduler uninstall`);
+   the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0
+   release (see "1.0.0 release").
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`
-overrides). Git: branch `main`, remote `origin` = private `Daemon-VI/cadre` (commit, then push).
+overrides). Git: branch `main`, remote `origin` = public `Daemon-VI/cadre` (commit, then push).

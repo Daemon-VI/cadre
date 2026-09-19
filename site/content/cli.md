@@ -12,9 +12,9 @@ extension, the container) calls the same engine.
 
 | How | Command | Status |
 |---|---|---|
-| Run without installing | `uvx cadre-ai <command>` | after the first PyPI publish |
-| Install as a tool | `uv tool install cadre-ai` or `pip install cadre-ai` | after the first PyPI publish |
-| From a clone (works today) | `git clone https://github.com/Daemon-VI/cadre && cd cadre && uv sync`, then `uv run cadre <command>` | works |
+| Run without installing | `uvx cadre-ai <command>` | 1.0.0 on PyPI |
+| Install as a tool | `pipx install cadre-ai`, `uv tool install cadre-ai` or `pip install cadre-ai` | 1.0.0 on PyPI |
+| From a clone | `git clone https://github.com/Daemon-VI/cadre && cd cadre && uv sync`, then `uv run cadre <command>` | works |
 | Standalone build, no Python | see [Containers and downloads](containers.html) | 1.0.0 on the GitHub Release |
 
 Cadre needs Python 3.12 or newer (uv installs one for you). `cadre --version` prints the version.

@@ -46,19 +46,10 @@ git -C repo log --stat cadre/<run-id>
    commits, `git diff --stat`, and the commands to review or discard it. Merge it yourself, or
    delete it.
 
-> **Not on PyPI yet.** The first publish is pending, so `uvx cadre-ai` cannot find the package
-> today. Until then, run it from a clone and use `uv run cadre` wherever this site says
-> `uvx cadre-ai` or `cadre`:
->
-> ```bash
-> git clone https://github.com/Daemon-VI/cadre && cd cadre
-> uv sync
-> uv run cadre provider add groq
-> uv run cadre forecast project-finisher "Make the failing tests pass"
-> uv run cadre run project-finisher "Make the failing tests pass" --project ../repo --allow-exec
-> ```
+Installed rather than run through `uvx`: `pipx install cadre-ai` or `uv tool install cadre-ai`,
+then `cadre …`. Version 1.0.0 is on [PyPI](https://pypi.org/project/cadre-ai/).
 
-No key yet? `uv run cadre run decision-board "Should we open a second office?" --demo` runs an
+No key yet? `uvx cadre-ai run decision-board "Should we open a second office?" --demo` runs an
 offline, scripted team. It is plumbing, not intelligence: every answer it writes is marked
 `[demo]`.
 
@@ -69,8 +60,8 @@ it, so routing, quotas and approvals exist in one place only.
 
 | Front end | Use it when | Status |
 |---|---|---|
-| [Command line](cli.html) | You work in a terminal | works from a clone; PyPI publish pending |
-| [AI editors (MCP)](mcp.html) | Claude Code, VS Code, Cursor, Windsurf or Antigravity should start runs | verified with a real MCP client; not yet in each host |
+| [Command line](cli.html) | You work in a terminal | 1.0.0 on PyPI (`cadre-ai`) |
+| [AI editors (MCP)](mcp.html) | Claude Code, VS Code, Cursor, Windsurf or Antigravity should start runs | from PyPI: tools called in Claude Code; found by VS Code's MCP client |
 | [GitHub Action](github-action.html) | An issue labelled `cadre` should become a pull request | `uses: Daemon-VI/cadre@v1`; tested on a real repository |
 | [VS Code extension](vscode.html) | You want runs, usage and approvals inside the editor | not yet published |
 | [Containers and downloads](containers.html) | A server, or a machine without Python | 1.0.0 on GHCR and the GitHub Release |
