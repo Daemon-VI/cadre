@@ -415,7 +415,8 @@ polls until healthy. It reads the token from `CADRE_HOME/token` (default `~/.cad
 it needs it and keeps it in the extension host only; webviews get data by `postMessage`, run
 with a CSP nonce, and insert model text with `textContent`. Adding a provider opens the integrated
 terminal on `cadre provider add <id>`, so the key goes into the CLI's hidden prompt. An `exec`
-approval is a modal that shows the check's exact command from the org file. It publishes to both
+approval is a notification (never focus-taking) whose Review… opens a modal that shows the check's
+exact command from the org file. It publishes to both
 the VS Code Marketplace and Open VSX (Antigravity, Cursor and Windsurf install from Open VSX).
 **Threat model.** Other extensions share the extension host; the token is never stored in VS Code
 settings or `SecretStorage` copies, and never shown in UI. Webviews are the XSS surface: no

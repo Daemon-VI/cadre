@@ -263,8 +263,10 @@ with local paths generalised.
 - **AC-19.3** Commands: Forecast, Start run on this folder (project mode on the workspace root),
   Review branch (diffs of changed files), Add provider (the key is typed into the terminal's
   hidden prompt and never passes through the extension).
-- **AC-19.4** Gate approvals are notifications; an `exec` approval is a modal showing the check's
-  name and its exact command from the org file, and needs an explicit click.
+- **AC-19.4** Gate approvals are notifications; an `exec` approval is a notification that never
+  takes keyboard focus, whose **Review…** opens a modal showing the check's name and its exact
+  command from the org file, and needs an explicit click (amended 2026-09-19: a modal opened by
+  polling took focus, and Enter typed into another window approved two demo runs).
 - **AC-19.5** One tag workflow publishes to the VS Code Marketplace and to Open VSX.
 
 ### FR-20 Docs site

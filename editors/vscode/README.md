@@ -19,7 +19,8 @@ Windsurf and Antigravity install from.
 - **Status bar**: today's usage against the tightest daily limit across your models — the largest
   of requests/RPD and tokens/TPD — and how many approvals are waiting.
 - **Approvals**: a gate or an agent's question arrives as a notification (Approve / Reject, or
-  Answer…). Permission to **execute code** is a modal dialog — see Security below.
+  Answer…). A request to **execute code** arrives as a notification with **Review…**, which opens a modal
+  dialog; see Security below.
 - **Commands** (Command Palette, category *Cadre*):
   - *Start run on this folder* — project mode on the workspace root: pick an organisation, type a
     goal. The run works on its own branch `cadre/<run-id>` in a git worktree; your working tree
@@ -70,9 +71,10 @@ The server's home is `CADRE_HOME` (default `~/.cadre`). If you run Cadre with a 
   operating system's credential store.
 - **Executing code.** A run's checks (tests, linters) execute code the agents wrote, as you, on
   this machine — it is not a sandbox. The extension never starts a run with execution
-  pre-approved. When a run first wants to run its checks, a modal dialog shows each check's name
-  and its exact command from the organisation file; only an explicit **Allow execution** click
-  approves. Closing the dialog decides nothing (the run keeps waiting); **Reject** rejects.
+  pre-approved. When a run first wants to run its checks, a notification says so; it never takes
+  keyboard focus, so nothing typed into another window can answer it. **Review…** opens a modal
+  dialog that shows each check's name and its exact command from the organisation file; only an
+  explicit **Allow execution** click approves. Closing the dialog decides nothing (the run keeps waiting); **Reject** rejects.
 - **The run view** is a webview with a strict Content Security Policy: one script, identified by
   a per-load nonce, from the extension itself; no remote resources; no network access. All text
   an agent wrote is inserted as text (`textContent`), never parsed as HTML. The webview receives

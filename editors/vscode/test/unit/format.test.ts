@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RunDetail, RunEvent } from "../../src/api";
-import { brief, describeEvent, duration, hasUsableProvider, int, statusIcon, toPanelRun } from "../../src/format";
+import { brief, describeEvent, duration, hasUsableProvider, int, offerStyle, statusIcon, toPanelRun } from "../../src/format";
 
 const ev = (kind: string, data: Record<string, unknown>, agent: string | null = "builder"): RunEvent =>
   ({ seq: 3, ts: 1_700_000_000, kind, agent, data });
@@ -119,4 +119,17 @@ test("small formatters", () => {
   assert.equal(duration(45), "45s");
   assert.equal(duration(600), "10m");
   assert.equal(duration(3 * 3600 + 4 * 60), "3h 04m");
+});
+
+test("an approval found by polling never opens a modal: a stray Enter must not allow execution", () => {
+  // 2026-09-19: the exec modal popped up over another window with "Allow execution" as its default
+  // button, and two demo runs were approved by keystrokes meant for something else
+  assert.equal(offerStyle("exec", false), "notice");
+  assert.equal(offerStyle("exec", true), "modal");  // the person clicked Review… or Decide…
+  assert.equal(offerStyle("gate", false), "notice");
+});
+
+test("artifact.written names the file, not the absolute path under the user's home", () => {
+  const v = describeEvent(ev("artifact.written", { path: "/home/someone/.cadre/runs/r/artifacts/plan.json", name: "plan.json" }, null));
+  assert.equal(v.text, "saved plan.json");
 });

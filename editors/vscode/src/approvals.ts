@@ -1,7 +1,10 @@
 // Approvals (AC-19.4). Pending approvals are polled; each is offered to the human once:
 //   gate     → a notification with Approve / Reject
 //   question → a notification with Answer… (input box) / Reject
-//   exec     → a MODAL warning whose detail is the engine's prompt, which lists every check as
+//   exec     → a notification with Review…. A poll never opens the modal: it takes keyboard focus
+//              and its default button allows execution, so an Enter typed into another window
+//              approved two runs on 2026-09-19. Review…, the run view's Decide… and "Review pending
+//              approvals" open a MODAL warning whose detail is the engine's prompt, which lists every check as
 //              `name: exact command` from the org file. Only an explicit "Allow execution" click
 //              approves; closing the dialog decides nothing (the run keeps waiting); "Reject"
 //              rejects.
@@ -9,6 +12,7 @@
 // pending and is reachable from "Cadre: Review pending approvals", the Runs tree and the run view.
 import * as vscode from "vscode";
 import { ApiError, type Approval, type CadreClient } from "./api";
+import { offerStyle } from "./format";
 import { inert, notificationText } from "./text";
 
 export class Approvals implements vscode.Disposable {
@@ -80,7 +84,7 @@ export class Approvals implements vscode.Disposable {
         approval: a,
       })),
       { placeHolder: "Pending approvals" }))?.approval;
-    if (chosen) await this.offer(chosen);
+    if (chosen) await this.offer(chosen, true);
   }
 
   /** Offer one approval by id (the run view's button). */
@@ -97,10 +101,12 @@ export class Approvals implements vscode.Disposable {
       void vscode.window.showInformationMessage("Cadre: that approval has already been decided.");
       return;
     }
-    await this.offer(a);
+    await this.offer(a, true);
   }
 
-  private offer(a: Approval): Promise<void> {
+  /** `userAsked`: the person picked this approval (Review…, Decide…), rather than a poll finding it. */
+  private offer(a: Approval, userAsked = false): Promise<void> {
+    if (a.kind === "exec" && offerStyle(a.kind, userAsked) === "notice") return this.noticeExec(a);
     if (a.kind === "exec") {
       // One modal at a time, in arrival order.
       const next = this.modalChain.then(() => this.offerExec(a));
@@ -121,6 +127,13 @@ export class Approvals implements vscode.Disposable {
       "Allow execution", "Reject");
     if (pick === "Allow execution") await this.decide(a, true, "");
     else if (pick === "Reject") await this.decide(a, false, "");
+  }
+
+  private async noticeExec(a: Approval): Promise<void> {
+    const pick = await vscode.window.showWarningMessage(
+      `Cadre run ${a.run_id} asks to execute code on this machine.`, "Review…", "Open run");
+    if (pick === "Review…") await this.offer(a, true);
+    else if (pick === "Open run") this.openRun(a.run_id);
   }
 
   private async offerGate(a: Approval): Promise<void> {

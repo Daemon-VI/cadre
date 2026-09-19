@@ -29,6 +29,8 @@ provider**.
   model-written text with `textContent` only.
 - **Your key never passes through it.** **Add provider** opens the integrated terminal on
   `cadre provider add <id>`, so you type the key into the CLI's hidden prompt.
-- **An exec approval is a modal showing the exact command.** Before a check may run code the agents
-  wrote, a modal shows the check's name and its exact command from the org file, and nothing runs
-  until you click. Gate approvals arrive as notifications.
+- **An exec approval shows the exact command, and only when you ask.** Before a check may run code
+  the agents wrote, a notification says a run is waiting. It never takes keyboard focus, so a key
+  you press in another window can't answer it. **Review…** opens a modal with the check's name and
+  its exact command from the org file, and nothing runs until you click **Allow execution**. Gate
+  approvals arrive as notifications.

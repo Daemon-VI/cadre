@@ -58,7 +58,8 @@ neither had been released.
 - A VS Code extension (`editors/vscode`), built as a `.vsix` in CI and published separately with
   its own `vscode-v*` tags: a Runs tree, a live run view,
   today's usage in the status bar, Forecast, Start run on this folder, Review branch, and Add
-  provider through the terminal's hidden prompt. `exec` approvals are a modal showing the exact
+  provider through the terminal's hidden prompt. `exec` approvals are a notification whose Review…
+  opens a modal showing the exact
   command. The token never reaches a webview.
 - A docs site (`site/`, GitHub Pages) with a replay of a real run's event log.
 - `docs/MCP_HOSTS.md`: config for Claude Code, VS Code, Cursor, Windsurf and Antigravity, each

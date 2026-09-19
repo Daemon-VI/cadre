@@ -148,6 +148,8 @@ function describeData(kind: string, d: Record<string, unknown>): Line {
       return line(`note: ${str(d.text)}`);
     case "file.written":
       return line(`wrote ${str(d.path)}`, "quiet");
+    case "artifact.written":
+      return line(`saved ${str(d.name)}`, "quiet");
     case "check.started":
       return line(`running check ${str(d.name)}: ${list(d.command).map(str).join(" ")}`, "quiet");
     case "check.finished":
@@ -201,6 +203,15 @@ function describeData(kind: string, d: Record<string, unknown>): Line {
 }
 
 /** At least one provider that can answer: a local one, or one whose key was found (as app.js decides). */
+/**
+ * How an approval is put in front of the person. One found by polling arrives while they may be
+ * typing elsewhere, so it is a notification, which never takes keyboard focus. The exec modal,
+ * whose default button is "Allow execution", opens only after they ask for it.
+ */
+export function offerStyle(kind: string, userAsked: boolean): "modal" | "notice" {
+  return kind === "exec" && userAsked ? "modal" : "notice";
+}
+
 export function hasUsableProvider(providers: readonly ProviderView[]): boolean {
   return providers.some((p) => Array.isArray(p.models) && p.models.length > 0 && (p.local || p.key !== "missing"));
 }
