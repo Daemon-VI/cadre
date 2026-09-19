@@ -40,14 +40,18 @@ jobs:
       - name: Check every internal link
         run: uv run --locked python site/check_links.py
 
-      - uses: actions/configure-pages@v6
+      # Pages needs a public repo (or a paid plan): until then the build and link check still run.
+      - if: ${{ !github.event.repository.private }}
+        uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v5
+      - if: ${{ !github.event.repository.private }}
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site/_build
 
   deploy:
     needs: build
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
