@@ -68,3 +68,36 @@ def test_audit_command_shows_recent_actions(home):
     CliRunner().invoke(app, ["user", "add", "bob"])
     r = CliRunner().invoke(app, ["audit"])
     assert r.exit_code == 0 and "user.created" in r.output and "bob" in r.output
+
+
+# ---------------------------------------------------------------- teams (M13 phase 2)
+def test_team_cli_lifecycle(home):
+    R = CliRunner()
+    assert R.invoke(app, ["team", "add", "eng", "--name", "Engineering"]).exit_code == 0
+    assert R.invoke(app, ["user", "add", "bob"]).exit_code == 0
+    assert R.invoke(app, ["team", "member", "add", "eng", "bob"]).exit_code == 0
+    r = R.invoke(app, ["team", "budget", "eng", "--runs-per-day", "10", "--concurrent", "2"])
+    assert r.exit_code == 0, r.output
+    r = R.invoke(app, ["team", "allow", "eng", "groq", "gemini/pro"])
+    assert r.exit_code == 0 and "groq" in r.output and "gemini/pro" in r.output
+    r = R.invoke(app, ["team", "list"])
+    assert "eng" in r.output and "bob" in r.output and "10" in r.output
+    from cadre.accounts import Accounts
+    from cadre.store import Store
+    a = Accounts(Store(Home(home.root).db_path))
+    assert a.team("eng")["allow"] == ["gemini/pro", "groq"]
+    assert a.team("eng")["budget"]["runs_per_day"] == 10
+    # clearing the allowance
+    assert R.invoke(app, ["team", "allow", "eng", "--clear"]).exit_code == 0
+    assert a.team("eng")["allow"] == []
+    # removing a member
+    assert R.invoke(app, ["team", "member", "remove", "eng", "bob"]).exit_code == 0
+    assert a.team("eng")["members"] == []
+
+
+def test_team_cli_rejects_bad_input(home):
+    R = CliRunner()
+    assert R.invoke(app, ["team", "member", "add", "ghost", "bob"]).exit_code == 1  # no team
+    assert R.invoke(app, ["team", "add", "eng"]).exit_code == 0
+    dup = R.invoke(app, ["team", "add", "eng"])
+    assert dup.exit_code == 1 and "already exists" in dup.output

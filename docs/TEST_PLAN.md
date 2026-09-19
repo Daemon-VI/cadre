@@ -129,7 +129,11 @@ the `..` tests exercise.
 | AC-23.4 `/me`, admin-only `/users` and `/audit`, no secret returned | `test_me_reports_the_caller`, `test_only_an_admin_sees_users_and_the_audit_log` |
 | AC-23.5 audit log | `test_every_account_change_is_audited`; `test_cli::test_audit_command_shows_recent_actions` |
 | AC-23.6 last admin protected | `test_the_last_enabled_admin_cannot_be_removed` |
-| M13 migration v2 -> v3 keeps rows | `test_a_v2_database_migrates_and_keeps_its_rows` |
+| M13 migration v2 -> v4 keeps rows | `test_a_v2_database_migrates_and_keeps_its_rows` |
+| AC-23.7 teams and membership | `test_teams_membership_and_budget_store`, `test_team_operations_validate`, `test_team_for_run_picks_the_right_team`; `test_cli::test_team_cli_lifecycle` |
+| AC-23.8 per-team budget gate | `test_team_budget_gate_and_allowance_at_run_start` (runs/day refuses the 2nd run) |
+| AC-23.9 model allowances | `test_model_allowance_matching`; `test_router::test_a_team_allowance_limits_which_models_a_call_may_use`; impossible allowance fails at start (`test_team_budget_gate_and_allowance_at_run_start`) |
+| AC-23.10 action routing | `test_may_act_on_run_is_scoped_to_owner_team_or_admin`; `test_only_a_teammate_or_admin_can_cancel_a_team_run`, `test_starting_a_run_for_a_team_you_are_not_in_is_refused`, `test_admin_sees_teams_but_a_member_does_not`, `test_me_lists_the_callers_teams` |
 
 ## Live regressions (M5, 2026-09-17)
 

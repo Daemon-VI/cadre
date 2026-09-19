@@ -50,14 +50,21 @@ CREATE INDEX IF NOT EXISTS tokens_hash ON tokens(hash);
 CREATE TABLE IF NOT EXISTS audit(
     seq INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, actor TEXT, action TEXT, target TEXT, detail TEXT);
 CREATE INDEX IF NOT EXISTS audit_ts ON audit(seq DESC);
+CREATE TABLE IF NOT EXISTS teams(id TEXT PRIMARY KEY, name TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS team_members(
+    team_id TEXT, user_id TEXT, PRIMARY KEY(team_id, user_id));
+CREATE TABLE IF NOT EXISTS team_budget(
+    team_id TEXT PRIMARY KEY, runs_per_day INTEGER, tokens_per_day INTEGER, max_concurrent INTEGER);
+CREATE TABLE IF NOT EXISTS team_allow(
+    team_id TEXT, pattern TEXT, PRIMARY KEY(team_id, pattern));
 """
 
 #: v1.0 columns added to v0.1's `runs` table (ADR-016, 017, 020); all nullable or defaulted
 RUN_COLUMNS = {"project_path": "TEXT", "base": "TEXT", "branch": "TEXT", "resume_at": "REAL",
                "active_seconds": "REAL DEFAULT 0", "privacy": "TEXT",
-               # M13: the user who started the run (NULL for runs from before accounts, or CLI owner)
-               "owner_user": "TEXT"}
-SCHEMA_VERSION = 3
+               # M13: the user and team the run belongs to (NULL for pre-accounts or personal runs)
+               "owner_user": "TEXT", "owner_team": "TEXT"}
+SCHEMA_VERSION = 4
 
 ACTIVE = ("queued", "running", "waiting")
 STALE_AFTER = 90.0  # seconds without a heartbeat before an active run counts as interrupted
@@ -367,3 +374,67 @@ class Store:
         for r in rows:
             r["detail"] = _loads(r["detail"])
         return rows
+
+    # ------------------------------------------------------------------ teams (M13 phase 2)
+    def create_team(self, tid: str, name: str) -> None:
+        self._x("INSERT INTO teams(id, name, created) VALUES(?,?,?)", (tid, name, time.time()))
+
+    def get_team(self, tid: str) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM teams WHERE id=?", (tid,))
+
+    def list_teams(self) -> list[dict[str, Any]]:
+        return self._all("SELECT * FROM teams ORDER BY created")
+
+    def add_member(self, tid: str, uid: str) -> None:
+        self._x("INSERT OR IGNORE INTO team_members(team_id, user_id) VALUES(?,?)", (tid, uid))
+
+    def remove_member(self, tid: str, uid: str) -> bool:
+        return self._x("DELETE FROM team_members WHERE team_id=? AND user_id=?", (tid, uid)).rowcount == 1
+
+    def team_members(self, tid: str) -> list[str]:
+        return [r["user_id"] for r in self._all(
+            "SELECT user_id FROM team_members WHERE team_id=? ORDER BY user_id", (tid,))]
+
+    def user_teams(self, uid: str) -> list[str]:
+        return [r["team_id"] for r in self._all(
+            "SELECT team_id FROM team_members WHERE user_id=? ORDER BY team_id", (uid,))]
+
+    def is_member(self, tid: str, uid: str) -> bool:
+        return self._one("SELECT 1 AS x FROM team_members WHERE team_id=? AND user_id=?", (tid, uid)) is not None
+
+    def set_budget(self, tid: str, runs_per_day: int | None, tokens_per_day: int | None,
+                   max_concurrent: int | None) -> None:
+        self._x("INSERT INTO team_budget(team_id, runs_per_day, tokens_per_day, max_concurrent) "
+                "VALUES(?,?,?,?) ON CONFLICT(team_id) DO UPDATE SET "
+                "runs_per_day=excluded.runs_per_day, tokens_per_day=excluded.tokens_per_day, "
+                "max_concurrent=excluded.max_concurrent",
+                (tid, runs_per_day, tokens_per_day, max_concurrent))
+
+    def get_budget(self, tid: str) -> dict[str, Any] | None:
+        return self._one("SELECT runs_per_day, tokens_per_day, max_concurrent FROM team_budget WHERE team_id=?", (tid,))
+
+    def set_allow(self, tid: str, patterns: list[str]) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM team_allow WHERE team_id=?", (tid,))
+            self._db.executemany("INSERT OR IGNORE INTO team_allow(team_id, pattern) VALUES(?,?)",
+                                 [(tid, p) for p in patterns])
+
+    def get_allow(self, tid: str) -> list[str]:
+        return [r["pattern"] for r in self._all(
+            "SELECT pattern FROM team_allow WHERE team_id=? ORDER BY pattern", (tid,))]
+
+    def count_team_runs_since(self, tid: str, since: float) -> int:
+        row = self._one("SELECT COUNT(*) AS n FROM runs WHERE owner_team=? AND created>=?", (tid, since))
+        return int(row["n"]) if row else 0
+
+    def count_team_active_runs(self, tid: str) -> int:
+        marks = ",".join("?" * len(ACTIVE))
+        row = self._one(f"SELECT COUNT(*) AS n FROM runs WHERE owner_team=? AND status IN ({marks})",
+                        (tid, *ACTIVE))
+        return int(row["n"]) if row else 0
+
+    def team_tokens_since(self, tid: str, since: float) -> int:
+        row = self._one(
+            "SELECT COALESCE(SUM(u.prompt_tokens + u.completion_tokens), 0) AS t FROM usage u "
+            "JOIN runs r ON r.id=u.run_id WHERE r.owner_team=? AND u.ts>=?", (tid, since))
+        return int(row["t"]) if row else 0

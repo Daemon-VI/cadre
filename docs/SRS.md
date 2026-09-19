@@ -339,10 +339,19 @@ managing them.
   admin-readable.
 - **AC-23.6** The **last enabled admin** cannot be disabled or demoted, so no one can lock
   everyone out.
-- **AC-23.7 (deferred to M13 phase 2, tracked here):** teams with per-team token/run budgets and
-  per-team model allowances; approvals routed to a role or team; OIDC SSO. Until then a run's
-  approvals may be decided by any member or admin, and budgets are per-run (FR-6) and per-day
-  (FR-9), not per-team.
+- **AC-23.7** **Teams** (M13 phase 2). A user may belong to several teams; an admin creates
+  teams and manages membership. A run belongs to a team — the one named at start (which the
+  starter must be a member of, unless admin), or the user's single team, else personal (no team).
+- **AC-23.8** **Per-team budgets**, checked at run start: `runs_per_day` and `tokens_per_day`
+  (per UTC day, summed across the team's runs) and `max_concurrent`. Reaching one refuses a new
+  run with a clear message; a run already going is not interrupted.
+- **AC-23.9** **Per-team model allowances**: a team may be limited to models matching patterns
+  (`provider`, `provider/model`, or `*`); empty means all. A team run may only use allowed models,
+  and a run whose allowance leaves no usable model fails at the start, not mid-run.
+- **AC-23.10** **Action routing:** cancelling or resuming a run, and deciding its approvals, is
+  allowed only for an admin, the run's owner, or a member of the run's team; anyone else gets
+  `403`. A run with no owner or team (pre-accounts, or a CLI run) stays actionable by any member.
+- **AC-23.11 (still deferred):** OIDC SSO. Local per-user tokens remain the only sign-in.
 
 ## 5. Non-functional requirements
 

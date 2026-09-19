@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (1.1.0 released; M13 phase 1 done on `main` and unreleased: users, roles, hashed tokens, RBAC, audit log; phase 2 next: teams, budgets/allowances, approval routing, OIDC)_
+_Last updated: 2026-09-19 (1.1.0 released; M13 done on `main` except OIDC — phase 1 accounts + phase 2 teams/budgets/allowances/routing; all unreleased; next: M14)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,9 +13,42 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: 1.1.0 released; M13 phase 1 (accounts) done on `main`, unreleased
+## Status: 1.1.0 released; M13 done on `main` except OIDC (accounts + teams), unreleased
 _One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D3, D5; the VS Code
 extension, D4, is built but not published); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
+
+## M13 phase 2 — teams, budgets, model allowances, action routing — DONE on `main`, 2026-09-19
+
+FR-23 (AC-23.7…23.10), ADR-034. Built on phase 1's accounts layer. Store schema **v4**: `teams`,
+`team_members`, `team_budget`, `team_allow`, and an `owner_team` column on runs (v2/v3 -> v4
+migration keeps rows).
+
+- **Teams & membership** (`accounts.py`): create teams, add/remove members; a run's team is the one
+  named at start (starter must be a member, or admin), the user's single team, else personal.
+- **Per-team budgets** checked at run start (`check_team_budget`): `runs_per_day`, `tokens_per_day`
+  (both per UTC day, tokens summed across the team's runs), `max_concurrent`. A run already going is
+  never interrupted.
+- **Model allowances** (`team_allow`): patterns `provider` / `provider/model` / `*`; enforced in
+  the router's candidate filter via a per-call `allow` tuple on `CallRequest` (`model_allowed`). A
+  team run whose allowance leaves no usable model fails at the start (`_require_an_allowed_model`).
+- **Action routing** (`may_act_on_run`): cancel/resume and approval decisions need admin, the run's
+  owner, or a member of its team, else `403`. An ownerless/teamless run stays actionable by any
+  member. Reads stay open (a viewer watches runs).
+- API: run start takes `team`; `GET /me` lists the caller's teams; admin `GET /teams`. CLI:
+  `cadre team add|list`, `cadre team member add|remove`, `cadre team budget`, `cadre team allow`.
+
+**Verified:** 265 passed, 9 skipped; `ruff` clean. `tests/test_accounts.py` (+10): allowance
+matching, membership/budget storage, team resolution (none/one/many/named/admin), `may_act_on_run`
+scoping, the budget gate and the impossible-allowance fail-fast over the run manager, and over the
+live API — teammate-vs-outsider cancel (`403`), starting for a team you're not in (`403`), `/me`
+teams, admin-only `/teams`. `tests/test_router.py` (+1): the allowance filters candidate models.
+`tests/test_cli.py` (+2): the `cadre team …` lifecycle. Smoke-tested end to end in a scratch home
+(team created, budgeted, allowed, all audited). OpenAPI snapshot gained `/teams` and the `team`
+field on run start.
+
+**Still deferred (M13.1):** OIDC SSO — per-user tokens remain the only sign-in. A later phase could
+feed a team's remaining daily tokens into the run's `max_tokens_per_day` so park-on-daily (ADR-017)
+extends to teams; today the token cap is a start-time gate.
 
 ## M13 phase 1 — users, roles and API tokens — DONE on `main`, 2026-09-19
 
@@ -640,11 +673,11 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 release").
 
 ## Where to pick up
-1. **Next: `ROADMAP.md` M13 phase 2** — teams, per-team token/run budgets and model allowances,
-   approvals routed to a role/team, and OIDC SSO. Build on `accounts.py` (phase 1). A 1.2.0 release
-   carrying M13 phase 1 (the accounts layer) needs Rithik's yes; it is a new feature, not a fix.
+1. **Next: `ROADMAP.md` M14** — memory across runs. (M13 is done on `main` except OIDC SSO,
+   which is deferred to M13.1 — it needs a real identity provider and can't be tested offline.)
+   A 1.2.0 release carrying all of M13 (accounts + teams) needs Rithik's yes; it is a new feature.
 2. Waiting on Rithik, each his call:
-   - **Release 1.2.0** to ship the accounts layer (M13 phase 1), or hold it until phase 2 is done.
+   - **Release 1.2.0** to ship M13 (accounts + teams), or hold it for OIDC (M13.1).
    - **Publish the security advisory** for the MCP `allow_exec` bypass. Draft text is in
      `docs/SECURITY_ADVISORY_DRAFT.md`: affected 1.0.0/1.0.1, fixed 1.1.0. Create it under the
      repo's Security → Advisories (GHSA); publishing is his act.
@@ -665,8 +698,8 @@ Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 r
 4. Done, for the record: keys rotated (a new key goes in with `provider key <id>`, not `provider
    add`); the scheduler job is installed (every 30 min; remove with `cadre scheduler uninstall`);
    the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0,
-   1.0.1 and 1.1.0 releases; M12; `v1` moved to 1.1.0 (proven on the demo repo, PR #9); M13 phase 1
-   (the accounts layer) on `main`.
+   1.0.1 and 1.1.0 releases; M12; `v1` moved to 1.1.0 (proven on the demo repo, PR #9); M13 on
+   `main` (accounts + teams, all but OIDC).
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`

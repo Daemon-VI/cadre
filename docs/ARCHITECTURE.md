@@ -568,3 +568,39 @@ rule (ADR-011) does not apply to it; provider keys remain write-only.
 hash is present; a tampered secret and a revoked/disabled token do not resolve; bootstrap turns the
 owner token into the admin and is idempotent; `tests/test_cli.py` mints a token and confirms the
 secret is not in the database file.
+
+### ADR-034 — Teams, per-team budgets and model allowances, and action routing (FR-23, M13 phase 2)
+**Context.** Phase 1 gave one server many users; a real organisation also needs to group them,
+cap what a group spends, limit which models it may use, and keep one team out of another's runs.
+**Decision.** A **team** is a set of users (`teams`, `team_members`). A run **belongs to a team**:
+the one named at start (the starter must be a member, or admin), or the user's single team, else
+**personal** (no team). `owner_team` is stored on the run alongside `owner_user`.
+- **Budgets** (`team_budget`) are checked **at run start**, not enforced mid-run: `runs_per_day`
+  and `tokens_per_day` per UTC day (tokens summed across the team's runs via the `usage` join) and
+  `max_concurrent` (active runs). Reaching one refuses the new run with a message. Start-time was
+  chosen over live throttling because the engine's own budgets (FR-6, FR-9) already bound a single
+  run, and a per-call team meter would thread team state through the hot path of every model call
+  for little gain; a run already going is never killed by a team cap. A later phase can make the
+  team's remaining daily tokens the run's `max_tokens_per_day` so the park-on-daily machinery
+  (ADR-017) extends to teams.
+- **Model allowances** (`team_allow`) are patterns — `provider`, `provider/model`, or `*`; empty
+  means all. Enforcement is one predicate, `model_allowed`, applied in the **router's** candidate
+  filter (`groups()`) via a per-call `allow` tuple carried on `CallRequest`, so a team run simply
+  never considers a disallowed model — no separate code path. A run whose allowance leaves no
+  usable model **fails at the start** (`_require_an_allowed_model`), not after the first call.
+- **Action routing.** `may_act_on_run(user, run)` gates cancel, resume and approval decisions: an
+  admin, the run's owner, or a member of its team may act; anyone else gets `403`. A run with no
+  owner or team (from before accounts, or a CLI run) stays actionable by any member, and the audit
+  log keeps every decision accountable. **Reads stay open** to any signed-in user on purpose —
+  a viewer is meant to watch runs; only side-effecting actions are scoped.
+**Rejected.** *A team role separate from the global role* — deferred; the global role plus team
+membership covers admin/operator/observer without a membership-role matrix. *Live per-call team
+budgets* — see above. *Scoping run reads to the team* — would blind the viewer role and the
+dashboard's overview for little security gain, since runs carry no secrets.
+**Proof.** `tests/test_accounts.py`: allowance matching; membership and budget storage; team
+resolution (none/one/many/named/admin); `may_act_on_run` for teammate/outsider/admin/owner/
+ownerless; and over the run manager and live API — the budget gate refuses the 2nd run, an
+impossible allowance fails at start, a teammate but not an outsider may cancel, starting for a
+team you are not in is `403`, `/me` lists teams, admin-only `/teams`. `tests/test_router.py`
+proves the allowance filters candidate models. `tests/test_cli.py` covers the `cadre team …`
+lifecycle.

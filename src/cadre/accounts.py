@@ -18,12 +18,22 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+import time
 from typing import TYPE_CHECKING, Any
+
+from .clocks import DayClock
 
 if TYPE_CHECKING:
     from .store import Store
 
 ROLES = ("viewer", "member", "admin")
+TEAM_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+
+
+def model_allowed(patterns: list[str], provider: str, key: str) -> bool:
+    """A model (`provider`, and `key` = provider/name) is allowed when the team lists no pattern,
+    or a pattern matches its provider, its full key, or `*`."""
+    return not patterns or any(p in ("*", provider, key) for p in patterns)
 #: what each role may do; a route asks for one capability
 CAPABILITIES: dict[str, frozenset[str]] = {
     "viewer": frozenset({"read"}),
@@ -96,6 +106,11 @@ class Accounts:
         self.store.touch_token(row["token_id"])
         return User(row["id"], row["name"], row["role"], row["token_id"])
 
+    def resolve_user(self, uid: str) -> User | None:
+        """The User for a stored id (no token needed), for server-side checks like team membership."""
+        row = self.store.get_user(uid)
+        return User(row["id"], row["name"], row["role"]) if row and not row["disabled"] else None
+
     # -------------------------------------------------------------- users
     def create_user(self, uid: str, name: str, role: str, actor: User | None = None) -> None:
         if not USER_ID.match(uid):
@@ -145,6 +160,107 @@ class Accounts:
 
     def list_tokens(self, uid: str | None = None) -> list[dict[str, Any]]:
         return self.store.list_tokens(uid)
+
+    # -------------------------------------------------------------- teams (phase 2)
+    def create_team(self, tid: str, name: str = "", actor: User | None = None) -> None:
+        if not TEAM_ID.match(tid):
+            raise AccountError(f"{tid!r} is not a valid team id (lower-case letters, digits, - and _)")
+        if self.store.get_team(tid):
+            raise AccountError(f"a team {tid!r} already exists")
+        self.store.create_team(tid, name or tid)
+        self.store.audit(_actor(actor), "team.created", tid, {"name": name or tid})
+
+    def list_teams(self) -> list[dict[str, Any]]:
+        out = []
+        for t in self.store.list_teams():
+            out.append({"id": t["id"], "name": t["name"], "members": self.store.team_members(t["id"]),
+                        "budget": self.store.get_budget(t["id"]), "allow": self.store.get_allow(t["id"])})
+        return out
+
+    def team(self, tid: str) -> dict[str, Any]:
+        if not self.store.get_team(tid):
+            raise AccountError(f"no team {tid!r}")
+        t = self.store.get_team(tid)
+        return {"id": t["id"], "name": t["name"], "members": self.store.team_members(tid),
+                "budget": self.store.get_budget(tid), "allow": self.store.get_allow(tid)}
+
+    def add_member(self, tid: str, uid: str, actor: User | None = None) -> None:
+        if not self.store.get_team(tid):
+            raise AccountError(f"no team {tid!r}")
+        self._require(uid)
+        self.store.add_member(tid, uid)
+        self.store.audit(_actor(actor), "team.member_added", tid, {"user": uid})
+
+    def remove_member(self, tid: str, uid: str, actor: User | None = None) -> None:
+        if not self.store.remove_member(tid, uid):
+            raise AccountError(f"{uid!r} is not a member of {tid!r}")
+        self.store.audit(_actor(actor), "team.member_removed", tid, {"user": uid})
+
+    def set_budget(self, tid: str, runs_per_day: int | None, tokens_per_day: int | None,
+                   max_concurrent: int | None, actor: User | None = None) -> None:
+        if not self.store.get_team(tid):
+            raise AccountError(f"no team {tid!r}")
+        for label, v in (("runs_per_day", runs_per_day), ("tokens_per_day", tokens_per_day),
+                         ("max_concurrent", max_concurrent)):
+            if v is not None and v < 0:
+                raise AccountError(f"{label} cannot be negative")
+        self.store.set_budget(tid, runs_per_day, tokens_per_day, max_concurrent)
+        self.store.audit(_actor(actor), "team.budget_set", tid,
+                         {"runs_per_day": runs_per_day, "tokens_per_day": tokens_per_day,
+                          "max_concurrent": max_concurrent})
+
+    def set_allow(self, tid: str, patterns: list[str], actor: User | None = None) -> None:
+        if not self.store.get_team(tid):
+            raise AccountError(f"no team {tid!r}")
+        clean = sorted({p.strip() for p in patterns if p.strip()})
+        self.store.set_allow(tid, clean)
+        self.store.audit(_actor(actor), "team.allow_set", tid, {"patterns": clean})
+
+    def user_teams(self, uid: str) -> list[str]:
+        return self.store.user_teams(uid)
+
+    def team_for_run(self, user: User, team: str | None) -> str | None:
+        """Which team a run belongs to. A named team must be one the user belongs to (admins may
+        use any). With no team named, a user's single team is used; 0 or many means a personal run."""
+        if team:
+            if not self.store.get_team(team):
+                raise AccountError(f"no team {team!r}")
+            if not (user.can("admin") or self.store.is_member(team, user.id)):
+                raise AccountError(f"you are not a member of {team!r}")
+            return team
+        mine = self.store.user_teams(user.id)
+        return mine[0] if len(mine) == 1 else None
+
+    def check_team_budget(self, tid: str | None) -> None:
+        """Raise if the team has reached a start-time budget (runs/day, concurrent, tokens/day)."""
+        if not tid:
+            return
+        b = self.store.get_budget(tid)
+        if not b:
+            return
+        if b["max_concurrent"] is not None and self.store.count_team_active_runs(tid) >= b["max_concurrent"]:
+            raise AccountError(f"team {tid} already has {b['max_concurrent']} runs going (its limit)")
+        day = DayClock("UTC").bucket_start(time.time())
+        if b["runs_per_day"] is not None and self.store.count_team_runs_since(tid, day) >= b["runs_per_day"]:
+            raise AccountError(f"team {tid} has started its {b['runs_per_day']} runs for today (UTC)")
+        if b["tokens_per_day"] is not None and self.store.team_tokens_since(tid, day) >= b["tokens_per_day"]:
+            raise AccountError(f"team {tid} has used its {b['tokens_per_day']} tokens for today (UTC)")
+
+    def team_allow(self, tid: str | None) -> list[str]:
+        return self.store.get_allow(tid) if tid else []
+
+    def may_act_on_run(self, user: User, run: dict[str, Any]) -> bool:
+        """Who may cancel/resume a run or decide its approvals: an admin, the run's owner, or a
+        member of the run's team. A run with no owner/team (pre-accounts, or a personal run) is
+        actionable by any member+ (the audit log keeps it accountable)."""
+        if user.can("admin"):
+            return True
+        owner, team = run.get("owner_user"), run.get("owner_team")
+        if not owner and not team:
+            return user.can("run")
+        if owner and owner == user.id:
+            return True
+        return bool(team and self.store.is_member(team, user.id))
 
     # -------------------------------------------------------------- audit
     def audit(self, actor: User | None, action: str, target: str = "", detail: Any = None) -> None:

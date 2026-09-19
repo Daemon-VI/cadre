@@ -84,10 +84,12 @@ class RunOptions:
     allow_exec: bool | str = False
     auto_approve: bool = False
     privacy: str | None = None  # overrides the org's `privacy` when set
+    #: a team's model allowance (FR-23): patterns the run's calls are limited to. Empty = all.
+    allow_models: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {"allow_exec": self.allow_exec, "auto_approve": self.auto_approve,
-                "privacy": self.privacy}
+                "privacy": self.privacy, "allow_models": list(self.allow_models)}
 
 
 Approver = Callable[[str, str, str | None], Awaitable[tuple[bool, str]]]
@@ -232,7 +234,8 @@ class RunContext:
                           avoid_families=tuple(dict.fromkeys(f for f in avoid if f)),
                           pin=agent.model, max_tokens=agent.max_output_tokens,
                           temperature=agent.temperature, label=agent.id,
-                          private=self.private, prefer=prefer)
+                          private=self.private, prefer=prefer,
+                          allow=tuple(self.options.allow_models))
         res = await self.router.chat(
             req, emit=lambda kind, data: self.emit(kind, agent=agent.id, step=step, **data))
         u = res.response.usage

@@ -60,6 +60,8 @@ scheduler_app = typer.Typer(help="Resume parked runs on a schedule (asks before 
 user_app = typer.Typer(help="Users and their roles (M13). Run locally, as the owner.",
                        no_args_is_help=True)
 token_app = typer.Typer(help="API tokens for users.", no_args_is_help=True)
+team_app = typer.Typer(help="Teams, their members, budgets and model allowances (M13).",
+                       no_args_is_help=True)
 
 
 def _print_version(value: bool) -> None:
@@ -80,6 +82,7 @@ app.add_typer(runs_app, name="runs")
 app.add_typer(scheduler_app, name="scheduler")
 app.add_typer(user_app, name="user")
 app.add_typer(token_app, name="token")
+app.add_typer(team_app, name="team")
 con = Console(highlight=False)
 
 
@@ -1133,3 +1136,89 @@ def audit(limit: int = typer.Option(50, "--limit", help="how many recent entries
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["ts"]))
         t.add_row(when, r["actor"], r["action"], r["target"] or "")
     con.print(t)
+
+
+# --------------------------------------------------------------------------- teams (M13 phase 2)
+@team_app.command("add")
+def team_add(tid: str = typer.Argument(..., help="a short id, e.g. eng"),
+             name: str = typer.Option("", "--name", help="display name")) -> None:
+    """Create a team. Add members with `cadre team member add <team> <user>`."""
+    try:
+        _accounts().create_team(tid, name)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"Added team [bold]{tid}[/].")
+
+
+@team_app.command("list")
+def team_list() -> None:
+    """Show teams, their members, budgets and model allowances."""
+    teams = _accounts().list_teams()
+    if not teams:
+        con.print("No teams yet.")
+        return
+    t = Table()
+    for col in ("id", "name", "members", "runs/day", "tokens/day", "concurrent", "models"):
+        t.add_column(col)
+    for tm in teams:
+        b = tm["budget"] or {}
+        def cap(v):
+            return "-" if v is None else str(v)
+        t.add_row(tm["id"], tm["name"] or "", ", ".join(tm["members"]) or "-",
+                  cap(b.get("runs_per_day")), cap(b.get("tokens_per_day")), cap(b.get("max_concurrent")),
+                  ", ".join(tm["allow"]) or "all")
+    con.print(t)
+
+
+member_app = typer.Typer(help="Team membership.", no_args_is_help=True)
+team_app.add_typer(member_app, name="member")
+
+
+@member_app.command("add")
+def team_member_add(team: str = typer.Argument(...), user: str = typer.Argument(...)) -> None:
+    """Add a user to a team."""
+    try:
+        _accounts().add_member(team, user)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"{user} is now in {team}.")
+
+
+@member_app.command("remove")
+def team_member_remove(team: str = typer.Argument(...), user: str = typer.Argument(...)) -> None:
+    """Remove a user from a team."""
+    try:
+        _accounts().remove_member(team, user)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"{user} is no longer in {team}.")
+
+
+@team_app.command("budget")
+def team_budget(
+    team: str = typer.Argument(...),
+    runs_per_day: int | None = typer.Option(None, "--runs-per-day", help="max runs the team may start per UTC day"),
+    tokens_per_day: int | None = typer.Option(None, "--tokens-per-day", help="max tokens per UTC day"),
+    concurrent: int | None = typer.Option(None, "--concurrent", help="max runs going at once"),
+) -> None:
+    """Set a team's start-time budget. Omit a flag to leave that limit unset (no cap)."""
+    try:
+        _accounts().set_budget(team, runs_per_day, tokens_per_day, concurrent)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"Budget set for {team}.")
+
+
+@team_app.command("allow")
+def team_allow(
+    team: str = typer.Argument(...),
+    patterns: list[str] = typer.Argument(None, help="provider, provider/model, or * (repeatable)"),
+    clear: bool = typer.Option(False, "--clear", help="remove the allowance (all models allowed)"),
+) -> None:
+    """Limit a team's runs to certain models. With no patterns (or --clear), every model is allowed."""
+    try:
+        _accounts().set_allow(team, [] if clear else (patterns or []))
+    except AccountError as e:
+        fail(str(e))
+    allowed = _accounts().team(team)["allow"]
+    con.print(f"{team} may use: [bold]{', '.join(allowed) or 'all models'}[/].")

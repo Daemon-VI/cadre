@@ -33,8 +33,8 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M10** | Multi-day runs | G4 · FR-9 | done 2026-09-17 (offline, fake clock; scheduler not installed) |
 | **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | capstone done 2026-09-18 (both succeeded); release pending the definition-of-done items in PROJECT_STATE |
 | **M12** | Container runner for checks | FR-22 · ADR-031 | done 2026-09-19; **released in 1.1.0** (containment tested in Linux CI under Docker and Podman; one check run in Docker Desktop on the laptop) |
-| **M13** | Multi-user organisations | FR-23 · ADR-032/033 | **phase 1 done 2026-09-19** (users, roles, hashed tokens, RBAC, audit log, bootstrap); phase 2 next: teams, per-team budgets/allowances, approval routing, OIDC SSO |
-| M14 | Memory across runs | — | after v1.0 |
+| **M13** | Multi-user organisations | FR-23 · ADR-032/033/034 | **done 2026-09-19** except OIDC: users, roles, hashed tokens, RBAC, audit (phase 1); teams, per-team budgets and model allowances, action routing (phase 2). OIDC SSO deferred to M13.1 |
+| M14 | Memory across runs | — | **next** |
 | M15 | Web research tool | — | after v1.0 |
 | M16 | Hosted deployment | — | after v1.0 |
 

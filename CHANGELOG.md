@@ -18,7 +18,17 @@ observed output, or a dated source.
 - An append-only **audit log** records user/token/role changes, run starts (with the owning user)
   and approval decisions. The last enabled admin cannot be disabled or demoted.
 - Shared provider keys stay server-side: only an admin manages providers; a member uses them.
-- Deferred to M13 phase 2: teams, per-team budgets and model allowances, approval routing, OIDC SSO.
+### Added — teams, budgets, model allowances and action routing (M13 phase 2, FR-23)
+- **Teams** group users. A run belongs to a team (named at start, or the user's single team, else
+  personal). `cadre team add|list`, `cadre team member add|remove`.
+- **Per-team budgets** checked at run start: runs per UTC day, tokens per UTC day, and concurrent
+  runs (`cadre team budget`). A run already going is never interrupted.
+- **Per-team model allowances**: limit a team to models matching `provider`, `provider/model` or
+  `*` (`cadre team allow`); a run whose allowance matches nothing fails at the start.
+- **Action routing**: cancelling/resuming a run and deciding its approvals is limited to an admin,
+  the run's owner, or a member of its team (others get 403). `GET /me` lists your teams; admin
+  `GET /teams`.
+- Still deferred: OIDC SSO (local per-user tokens remain the only sign-in).
 
 ## 1.1.0 — 2026-09-19
 

@@ -355,6 +355,17 @@
       ],
       "title": "Project"
      },
+     "team": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Team"
+     },
      "yaml": {
       "anyOf": [
        {
@@ -1592,6 +1603,29 @@
      }
     },
     "summary": "Stream"
+   }
+  },
+  "/api/v1/teams": {
+   "get": {
+    "operationId": "teams_api_v1_teams_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Teams Api V1 Teams Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Teams"
    }
   },
   "/api/v1/usage": {

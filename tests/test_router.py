@@ -188,3 +188,20 @@ async def test_a_daily_quota_429_blocks_the_model_until_its_reset():
     block = r.quota(models[0]).block(10)
     assert block.kind == "daily" and block.wait > 60 and models[0].limits.rpd == 6
     assert (await r.chat(CallRequest(MSG))).entry.provider == "b" and len(a.calls) == 1
+
+
+async def test_a_team_allowance_limits_which_models_a_call_may_use():
+    a = ScriptedProvider("a", lambda *_: "a")
+    b = ScriptedProvider("b", lambda *_: "b")
+    r = Router({"a": a, "b": b}, entries(("a", "m", "strong", "fa"), ("b", "m", "strong", "fb")))
+    # allow only provider b: the call must land on b even though a is higher priority
+    res = await r.chat(CallRequest(MSG, allow=("b",)))
+    assert res.entry.provider == "b"
+    # allow a specific model key
+    res = await r.chat(CallRequest(MSG, allow=("a/m",)))
+    assert res.entry.key == "a/m"
+    # an allowance that matches nothing leaves no model
+    with pytest.raises(NoModelAvailable):
+        await r.chat(CallRequest(MSG, allow=("c",)))
+    # empty allowance = everything
+    assert (await r.chat(CallRequest(MSG, allow=()))).entry.provider == "a"

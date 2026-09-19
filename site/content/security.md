@@ -100,6 +100,11 @@ The dashboard and every front end talk to `cadre serve` (ADR-010):
   gets `403`. Shared provider keys stay server-side — a member uses them without seeing them. An
   append-only **audit log** records who did what. Manage accounts with `cadre user …` /
   `cadre token …`; read the log with `cadre audit`.
+- **Teams.** Users can be grouped into teams (`cadre team …`). A run belongs to a team, which can
+  cap runs/tokens per day and concurrent runs (checked at run start) and be limited to certain
+  models. Cancelling or resuming a run, and deciding its approvals, is limited to an admin, the
+  run's owner, or a member of its team. Reads stay open to any signed-in user. OIDC SSO is not
+  built yet.
 - It **rejects any `Host` header** that is not loopback (a defence against DNS rebinding), except
   the exact names you pass with `--allowed-host`.
 - It sends **no CORS headers** and serves a strict Content-Security-Policy. The dashboard inserts

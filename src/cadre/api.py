@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from pydantic import BaseModel, Field
 
 from . import __version__
-from .accounts import User
+from .accounts import AccountError, User
 from .config import (
     ModelConfig,
     apply_diff,
@@ -82,6 +82,7 @@ class RunIn(BaseModel):
     project: str | None = None
     base: str | None = None
     allow_dirty: bool = False
+    team: str | None = None
 
 
 class ForecastIn(BaseModel):
@@ -432,9 +433,12 @@ def create_app(manager: RunManager, *, token: str | None = None,
                                  RunOptions(allow_exec=body.allow_exec, auto_approve=body.auto_approve,
                                             privacy=body.privacy),
                                  demo=body.demo, org_yaml=body.yaml, project=body.project,
-                                 base=body.base, allow_dirty=body.allow_dirty, owner=user.id)
+                                 base=body.base, allow_dirty=body.allow_dirty, owner=user.id,
+                                 team=body.team)
         except OrgError as e:
             raise HTTPException(422, {"errors": e.errors}) from None
+        except AccountError as e:
+            raise HTTPException(403, str(e)) from None
         except (FileNotFoundError, ValueError) as e:
             raise HTTPException(400, str(e)) from None
         manager.start(rid)
@@ -495,14 +499,20 @@ def create_app(manager: RunManager, *, token: str | None = None,
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 
-    @api.post("/runs/{rid}/cancel", dependencies=run_secured)
-    async def cancel(rid: str) -> dict[str, Any]:
-        run_or_404(rid)
+    def act_or_403(rid: str, user: User) -> dict[str, Any]:
+        r = run_or_404(rid)
+        if not manager.accounts.may_act_on_run(user, r):
+            raise HTTPException(403, "this run belongs to another user or team")
+        return r
+
+    @api.post("/runs/{rid}/cancel")
+    async def cancel(rid: str, user: User = Depends(requires("run"))) -> dict[str, Any]:
+        act_or_403(rid, user)
         return {"cancelled": manager.cancel(rid)}
 
-    @api.post("/runs/{rid}/resume", dependencies=run_secured)
-    async def resume(rid: str) -> dict[str, Any]:
-        r = run_or_404(rid)
+    @api.post("/runs/{rid}/resume")
+    async def resume(rid: str, user: User = Depends(requires("run"))) -> dict[str, Any]:
+        r = act_or_403(rid, user)
         if rid in manager.tasks or r["status"] in ACTIVE:
             raise HTTPException(409, "the run is still active")
         if not manager.resumable(rid):
@@ -538,6 +548,9 @@ def create_app(manager: RunManager, *, token: str | None = None,
         approval = store.get_approval(aid)
         if approval is None:
             raise HTTPException(404, "no such approval")
+        run = store.get_run(approval["run_id"])
+        if run and not manager.accounts.may_act_on_run(user, run):
+            raise HTTPException(403, "this approval belongs to another user or team")
         if not store.decide(aid, body.approve, body.answer):
             raise HTTPException(409, "already decided")
         manager.accounts.audit(user, "approval.decided", aid,
@@ -548,11 +561,15 @@ def create_app(manager: RunManager, *, token: str | None = None,
     # ------------------------------------------------------------------ accounts (M13)
     @api.get("/me")
     async def me(user: User = Depends(auth)) -> dict[str, Any]:
-        return user.as_dict()
+        return {**user.as_dict(), "teams": manager.accounts.user_teams(user.id)}
 
     @api.get("/users", dependencies=admin_secured)
     async def users() -> list[dict[str, Any]]:
         return manager.accounts.list_users()
+
+    @api.get("/teams", dependencies=admin_secured)
+    async def teams() -> list[dict[str, Any]]:
+        return manager.accounts.list_teams()
 
     @api.get("/audit", dependencies=admin_secured)
     async def audit(limit: int = 100) -> list[dict[str, Any]]:

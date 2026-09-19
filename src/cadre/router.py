@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .accounts import model_allowed
 from .clocks import DayClock
 from .providers import (
     AuthFailed,
@@ -76,6 +77,8 @@ class CallRequest:
     private: bool = False  # only providers that do not train on prompts (ADR-020)
     #: keep an agent's tool loop on the model it started with when that model is free soon
     prefer: str | None = None
+    #: a team's model allowance (FR-23): patterns of provider / provider/model / "*". Empty = all.
+    allow: tuple[str, ...] = ()
 
 
 @dataclass
@@ -150,7 +153,8 @@ class Router:
         return [m for m in self.usable() if m.trains != "no"]
 
     def groups(self, req: CallRequest, exclude: set[str]) -> list[tuple[list[ModelEntry], bool]]:
-        pool = [m for m in self.usable(req.private) if m.key not in exclude]
+        pool = [m for m in self.usable(req.private) if m.key not in exclude
+                and model_allowed(list(req.allow), m.provider, m.key)]
         if req.pin:
             pool = [m for m in pool if req.pin in (m.key, m.name)]
             return [(pool, not req.avoid_families or all(

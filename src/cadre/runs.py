@@ -13,11 +13,12 @@ import random
 import time
 import traceback
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import httpx
 
-from .accounts import Accounts
+from .accounts import Accounts, model_allowed
 from .clocks import ist
 from .config import Home, build_router
 from .demo import demo_providers
@@ -111,7 +112,8 @@ class RunManager:
     # ------------------------------------------------------------------ lifecycle
     def create(self, org: str, goal: str, options: RunOptions | None = None, *,
                demo: bool = False, org_yaml: str | None = None, project: str | None = None,
-               base: str | None = None, allow_dirty: bool = False, owner: str | None = None) -> str:
+               base: str | None = None, allow_dirty: bool = False, owner: str | None = None,
+               team: str | None = None) -> str:
         goal = (goal or "").strip()
         if not goal:
             raise ValueError("a run needs a goal")
@@ -121,15 +123,28 @@ class RunManager:
         else:
             source, text = find_org_text(org, self.home.orgs_dir)
         spec = load_org_text(text)
-        opts = (options or RunOptions()).as_dict()
+        # M13 phase 2: the run's team decides its budget and model allowance (FR-23)
+        opt = options or RunOptions()
+        if owner:
+            user = self.accounts.resolve_user(owner)
+            resolved_team = self.accounts.team_for_run(user, team) if user else team
+            self.accounts.check_team_budget(resolved_team)          # runs/day, concurrent, tokens/day
+            allow = tuple(self.accounts.team_allow(resolved_team))
+            if allow and not demo:
+                self._require_an_allowed_model(allow, opt.privacy or spec.privacy)
+            opt = replace(opt, allow_models=allow)
+        else:
+            resolved_team = team
+        opts = opt.as_dict()
         extra: dict[str, Any] = {}
         if project:
             info = inspect(project, base, allow_dirty)  # refuses non-repos and dirty trees (AC-8.1/8.2)
             extra["project"] = {**info.as_dict(), "checks": repo_checks(info.root, info.base)}
         rid = self.store.create_run(spec.name, text, goal, {**opts, "demo": demo, "source": source, **extra})
-        if owner:
-            self.store.update_run(rid, owner_user=owner)
-        self.store.audit(owner, "run.started", rid, {"org": spec.name, "project": bool(project)})
+        if owner or resolved_team:
+            self.store.update_run(rid, owner_user=owner, owner_team=resolved_team)
+        self.store.audit(owner, "run.started", rid,
+                         {"org": spec.name, "project": bool(project), "team": resolved_team})
         if project:
             self.store.update_run(rid, project_path=extra["project"]["root"],
                                   base=extra["project"]["base"], branch=f"cadre/{rid}")
@@ -139,6 +154,17 @@ class RunManager:
                             f"{extra['project']['base_label']} and does not see them"})
         return rid
 
+    def _require_an_allowed_model(self, allow: tuple[str, ...], privacy: str | None) -> None:
+        """Fail a team run at the start if its model allowance leaves no usable model, rather than
+        after the first agent call (FR-23)."""
+        router = self.router(demo=False)
+        private = privacy == "private"
+        if not any(model_allowed(list(allow), m.provider, m.key) for m in router.usable(private)):
+            raise ValueError(
+                f"the team's model allowance ({', '.join(allow)}) matches no configured model"
+                + (" that does not train on prompts" if private else "")
+                + ". Widen the allowance (`cadre team allow`) or add a matching provider.")
+
     async def execute(self, run_id: str, approver: Approver | None = None) -> dict[str, Any]:
         run = self.store.get_run(run_id)
         if run is None:
@@ -147,7 +173,8 @@ class RunManager:
         opts = run["options"] or {}
         options = RunOptions(allow_exec=allow_exec_option(opts.get("allow_exec")),
                              auto_approve=bool(opts.get("auto_approve")),
-                             privacy=opts.get("privacy"))
+                             privacy=opts.get("privacy"),
+                             allow_models=tuple(opts.get("allow_models") or ()))
         resumed = bool(store.step_paths(run_id))
         self._started[run_id] = time.monotonic()
         store.update_run(run_id, status="running", error=None, finished=None, resume_at=None)

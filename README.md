@@ -350,6 +350,11 @@ Python classes and functions.
   tokens are stored hashed and shown once. Your existing `~/.cadre/token` is the bootstrap admin,
   so a single-user install is unchanged. An append-only audit log records who did what
   (`cadre audit`). Shared provider keys stay server-side: members use them without seeing them.
+- **Teams (M13).** Group users into teams (`cadre team …`). A run belongs to a team, which can
+  have a **budget** (runs and tokens per day, concurrent runs — checked when a run starts) and a
+  **model allowance** (limit the team to certain providers/models). Cancelling or resuming a run
+  and deciding its approvals is limited to an admin, the run's owner, or a member of its team.
+  OIDC SSO is not built yet; per-user tokens are the only sign-in.
 - Keys live in the OS credential store or your environment — never in `config.yaml`, the
   database, events, API responses or logs. Loaded keys are redacted from everything stored.
 - Respect each provider's terms. Cadre spreads work across *different* providers; it does not

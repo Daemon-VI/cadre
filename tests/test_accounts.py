@@ -117,13 +117,16 @@ def test_a_v2_database_migrates_and_keeps_its_rows(tmp_path):
     db.commit()
     db.close()
     store = Store(p)
-    assert store.version == SCHEMA_VERSION == 3
+    assert store.version == SCHEMA_VERSION == 4
     assert store.get_run("r-old")["status"] == "succeeded"          # untouched
     cols = {r[1] for r in store._db.execute("PRAGMA table_info(runs)")}
-    assert "owner_user" in cols
+    assert {"owner_user", "owner_team"} <= cols
     accounts = Accounts(store)                                       # the new tables exist and work
     accounts.create_user("bob", "Bob", "member")
+    accounts.create_team("eng", "Engineering")
+    accounts.add_member("eng", "bob")
     assert [u["id"] for u in accounts.list_users()] == ["bob"]
+    assert store.user_teams("bob") == ["eng"]
     store.close()
 
 
@@ -195,3 +198,157 @@ def test_only_an_admin_sees_users_and_the_audit_log(rbac):
     assert c.get("/api/v1/audit", headers=a).status_code == 200
     # no token secret is ever returned by any endpoint
     assert all("hash" not in u and "token" not in u for u in users)
+
+
+# ================================================================ M13 phase 2: teams
+from cadre.accounts import AccountError, model_allowed  # noqa: E402
+
+
+def test_model_allowance_matching():
+    assert model_allowed([], "groq", "groq/x") is True          # empty = all
+    assert model_allowed(["*"], "groq", "groq/x") is True
+    assert model_allowed(["groq"], "groq", "groq/llama") is True
+    assert model_allowed(["groq/llama"], "groq", "groq/llama") is True
+    assert model_allowed(["groq"], "gemini", "gemini/pro") is False
+    assert model_allowed(["groq/a"], "groq", "groq/b") is False
+
+
+def test_teams_membership_and_budget_store(store):
+    accounts = Accounts(store)
+    accounts.create_user("bob", "Bob", "member")
+    accounts.create_user("amy", "Amy", "member")
+    accounts.create_team("eng", "Engineering")
+    accounts.add_member("eng", "bob")
+    accounts.add_member("eng", "amy")
+    assert set(accounts.team("eng")["members"]) == {"bob", "amy"}
+    assert accounts.user_teams("bob") == ["eng"]
+    accounts.remove_member("eng", "amy")
+    assert accounts.team("eng")["members"] == ["bob"]
+    accounts.set_budget("eng", runs_per_day=5, tokens_per_day=100000, max_concurrent=2)
+    assert store.get_budget("eng") == {"runs_per_day": 5, "tokens_per_day": 100000, "max_concurrent": 2}
+    accounts.set_allow("eng", ["groq", "groq", "  gemini/pro  "])
+    assert accounts.team("eng")["allow"] == ["gemini/pro", "groq"]   # deduped, trimmed, sorted
+
+
+def test_team_operations_validate(store):
+    accounts = Accounts(store)
+    with pytest.raises(AccountError, match="not a valid team id"):
+        accounts.create_team("Bad Team!")
+    accounts.create_team("eng")
+    with pytest.raises(AccountError, match="already exists"):
+        accounts.create_team("eng")
+    with pytest.raises(AccountError, match="no user"):
+        accounts.add_member("eng", "ghost")
+    with pytest.raises(AccountError, match="not a member"):
+        accounts.remove_member("eng", "ghost")
+    accounts.create_user("bob", "Bob", "member")
+    with pytest.raises(AccountError, match="cannot be negative"):
+        accounts.set_budget("eng", runs_per_day=-1, tokens_per_day=None, max_concurrent=None)
+
+
+def test_team_for_run_picks_the_right_team(store):
+    accounts = Accounts(store)
+    accounts.create_user("bob", "Bob", "member")
+    accounts.create_team("eng")
+    accounts.create_team("ops")
+    bob = accounts.resolve_user("bob")
+    assert accounts.team_for_run(bob, None) is None                 # in no team: personal
+    accounts.add_member("eng", "bob")
+    assert accounts.team_for_run(bob, None) == "eng"                # in one: that one
+    accounts.add_member("ops", "bob")
+    assert accounts.team_for_run(bob, None) is None                # in many: personal unless named
+    assert accounts.team_for_run(bob, "ops") == "ops"
+    with pytest.raises(AccountError, match="no team"):
+        accounts.team_for_run(bob, "nope")             # a team that does not exist
+    accounts.create_team("secret")
+    with pytest.raises(AccountError, match="not a member"):
+        accounts.team_for_run(bob, "secret")           # a team bob is not in
+    admin = User("root", "Root", "admin")
+    assert accounts.team_for_run(admin, "secret") == "secret"       # admins may use any team
+
+
+def test_may_act_on_run_is_scoped_to_owner_team_or_admin(store):
+    accounts = Accounts(store)
+    accounts.create_user("bob", "Bob", "member")
+    accounts.create_user("amy", "Amy", "member")
+    accounts.create_team("eng")
+    accounts.add_member("eng", "bob")
+    bob, amy = accounts.resolve_user("bob"), accounts.resolve_user("amy")
+    admin = User("root", "Root", "admin")
+    team_run = {"owner_user": "bob", "owner_team": "eng"}
+    assert accounts.may_act_on_run(bob, team_run) is True          # a teammate
+    assert accounts.may_act_on_run(amy, team_run) is False         # outside the team
+    assert accounts.may_act_on_run(admin, team_run) is True        # admin
+    personal = {"owner_user": "bob", "owner_team": None}
+    assert accounts.may_act_on_run(amy, personal) is False         # not the owner
+    assert accounts.may_act_on_run(bob, personal) is True
+    ownerless = {"owner_user": None, "owner_team": None}           # pre-accounts / CLI run
+    assert accounts.may_act_on_run(amy, ownerless) is True         # any member+
+    assert accounts.may_act_on_run(User("v", "V", "viewer"), ownerless) is False
+
+
+# ---------------------------------------------------------------- teams over the run manager / API
+def test_team_budget_gate_and_allowance_at_run_start(home):
+    manager = RunManager(home, secrets=MemorySecrets())
+    create_app(manager, token="tok-admin-000000000000", resume_every=None)  # bootstrap owner
+    a = manager.accounts
+    a.create_user("bob", "Bob", "member")
+    a.create_team("eng")
+    a.add_member("eng", "bob")
+    a.set_budget("eng", runs_per_day=1, tokens_per_day=None, max_concurrent=None)
+    # a demo run for the team is recorded against it
+    rid = manager.create("decision-board", "pick one", demo=True, owner="bob")
+    assert manager.store.get_run(rid)["owner_team"] == "eng"
+    # the second run today exceeds runs_per_day=1
+    with pytest.raises(AccountError, match="runs for today"):
+        manager.create("decision-board", "again", demo=True, owner="bob")
+    # an allowance that matches nothing configured fails fast (non-demo)
+    a.set_budget("eng", None, None, None)
+    a.set_allow("eng", ["no-such-provider"])
+    with pytest.raises(ValueError, match="matches no configured model"):
+        manager.create("decision-board", "x", owner="bob")
+
+
+@pytest.fixture
+def teamed(home):
+    manager = RunManager(home, secrets=MemorySecrets())
+    app = create_app(manager, token=TOKEN, resume_every=None)
+    a = manager.accounts
+    a.create_user("bob", "Bob", "member")
+    a.create_user("amy", "Amy", "member")
+    a.create_team("eng")
+    a.add_member("eng", "bob")
+    tokens = {"admin": TOKEN, "bob": a.mint_token("bob"), "amy": a.mint_token("amy")}
+    with TestClient(app, base_url="http://127.0.0.1:8765") as c:
+        yield c, tokens, manager
+
+
+def test_me_lists_the_callers_teams(teamed):
+    c, tokens, _ = teamed
+    assert c.get("/api/v1/me", headers=hdr(tokens["bob"])).json()["teams"] == ["eng"]
+    assert c.get("/api/v1/me", headers=hdr(tokens["amy"])).json()["teams"] == []
+
+
+def test_only_a_teammate_or_admin_can_cancel_a_team_run(teamed):
+    c, tokens, manager = teamed
+    r = c.post("/api/v1/runs", json={"org": "decision-board", "goal": "x", "demo": True, "team": "eng"},
+               headers=hdr(tokens["bob"]))
+    assert r.status_code == 200, r.text
+    rid = r.json()["id"]
+    assert manager.store.get_run(rid)["owner_team"] == "eng"
+    assert c.post(f"/api/v1/runs/{rid}/cancel", headers=hdr(tokens["amy"])).status_code == 403
+    assert c.post(f"/api/v1/runs/{rid}/cancel", headers=hdr(tokens["admin"])).status_code == 200
+
+
+def test_starting_a_run_for_a_team_you_are_not_in_is_refused(teamed):
+    c, tokens, _ = teamed
+    r = c.post("/api/v1/runs", json={"org": "decision-board", "goal": "x", "demo": True, "team": "eng"},
+               headers=hdr(tokens["amy"]))
+    assert r.status_code == 403 and "not a member" in r.json()["detail"]
+
+
+def test_admin_sees_teams_but_a_member_does_not(teamed):
+    c, tokens, _ = teamed
+    teams = c.get("/api/v1/teams", headers=hdr(tokens["admin"])).json()
+    assert {t["id"] for t in teams} == {"eng"} and teams[0]["members"] == ["bob"]
+    assert c.get("/api/v1/teams", headers=hdr(tokens["bob"])).status_code == 403
