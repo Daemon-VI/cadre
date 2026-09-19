@@ -2,6 +2,7 @@
 comment for the GitHub Action (FR-18). Standard library only; runs with the runner's python3.
 
     pr_body.py outputs|body|comment RESULT.json
+    GOAL=... pr_body.py title
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ def report_text(r: dict, limit: int = MAX_REPORT) -> str:
     return report
 
 
-def body(r: dict) -> str:
+def body(r: dict, issue: str = "") -> str:
     report = report_text(r)
     commits = "\n".join(f"- `{c}`" for c in r.get("commits", [])[:30]) or "- (none)"
     status = r["status"] + (" — a gate or check did not approve; review with extra care"
@@ -40,7 +41,7 @@ def body(r: dict) -> str:
             f"**Run:** `{r['id']}` · **Status:** {status}\n\n**Commits**\n{commits}\n\n"
             f"```\n{r.get('diff_stat') or ''}\n```\n\n**Usage (free keys)**\n\n{usage_table(r)}\n\n"
             "_Opened by the Cadre action. Nothing is merged automatically: review this like any "
-            "other pull request._\n")
+            "other pull request._\n" + (f"\nCloses #{issue}\n" if issue.isdigit() else ""))
 
 
 def comment(r: dict, pr_url: str = "") -> str:
@@ -66,14 +67,26 @@ def outputs(r: dict) -> str:
                       f"commits={len(r.get('commits', []))}"])
 
 
+def title(goal: str, limit: int = 72) -> str:
+    """The pull request's title: the goal's first line (an issue's title), cut at a word."""
+    first = " ".join(next((ln for ln in goal.splitlines() if ln.strip()), "").split())
+    if len(first) > limit:
+        cut = first[:limit]
+        first = (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip(".,;:") + "…"
+    return "Cadre: " + (first or "work from an issue")
+
+
 def main() -> int:
+    if sys.argv[1] == "title":
+        print(title(os.environ.get("GOAL", "")))
+        return 0
     mode, path = sys.argv[1], sys.argv[2]
     with open(path, encoding="utf-8") as f:
         r = json.load(f)
     if mode == "comment":
         print(comment(r, os.environ.get("PR_URL", "")))
     else:
-        print({"outputs": outputs, "body": body}[mode](r))
+        print(body(r, os.environ.get("ISSUE", "")) if mode == "body" else outputs(r))
     return 0
 
 

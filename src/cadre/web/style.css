@@ -169,8 +169,10 @@ pre {
 .bar { height: 6px; background: var(--code); border-radius: 3px; overflow: hidden; min-width: 80px; }
 .bar > span { display: block; height: 100%; background: var(--accent); }
 .bar.hot > span { background: var(--warn); }
-.meter-row { display: flex; align-items: center; gap: 8px; min-width: 160px; }
-.meter-row .bar { flex: 1; }
+.meter-row { display: grid; grid-template-columns: minmax(80px, 1fr) 3em 5.5em; align-items: center;
+  gap: 8px; min-width: 200px; }  /* a fixed slot for "near cap", so every bar has the same length */
+.meter-row .pill { justify-self: start; }
+.nowrap { white-space: nowrap; }
 .agents { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .agent { background: var(--code); border-radius: 8px; padding: 3px 8px; font-size: 13px; }
 .agent b { font-family: var(--mono); font-weight: 600; }
@@ -190,5 +192,6 @@ pre {
   .top { padding: 10px 16px; gap: 10px; }
   main { padding: 16px; }
   .ev { grid-template-columns: 1fr; gap: 2px; }
+  td.goal { min-width: 14em; }  /* the table scrolls sideways instead of a word per line */
   .split { grid-template-columns: 1fr; }
 }

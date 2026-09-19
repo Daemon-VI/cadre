@@ -277,6 +277,7 @@ def test_action_formats_outputs_body_and_parked_comment(home, tmp_path):
     assert pr.outputs(r).splitlines()[1] == "status=succeeded"
     body = pr.body(r)
     assert "| **total** |" in body and r["id"] in body and len(body) < 65_536
+    assert "Closes #" not in body and pr.body(r, "4").endswith("Closes #4\n")  # merging closes the issue
     r.update(status="parked", resume_at_ist="19 Sep 05:30 IST")
     assert "19 Sep 05:30 IST" in pr.comment(r)
     # the example workflow only lets trusted people trigger it, with the least permissions
@@ -369,3 +370,19 @@ async def test_exec_approval_shows_the_command_that_will_really_run(home):
     [prompt] = [p for k, p in seen if k == "exec"][:1]
     assert "{python}" not in prompt and sys.executable in prompt.replace('"', "")
     assert m.store.list_runs()[0].keys() >= {"branch", "project_path", "resume_at"}
+
+
+def test_pr_title_is_the_goals_first_line_cut_at_a_word():
+    # a labelled issue's goal is "title\n\nbody"; `head -c 60` put the newline into PR #5's title
+    import yaml
+
+    pr = _tool_at("action", "pr_body")
+    t = pr.title("Add a one-line module docstring to textstats/__init__.py\n\nA one-line docstring at")
+    assert t == "Cadre: Add a one-line module docstring to textstats/__init__.py"
+    long = pr.title("Implement top_words and reading_time in textstats/core.py as described in the issue")
+    assert long == "Cadre: Implement top_words and reading_time in textstats/core.py as described…"
+    assert pr.title("é" * 100).endswith("…")  # cut by characters, never mid-way through a UTF-8 byte
+    assert pr.title("  \n\n") == "Cadre: work from an issue"
+    action = yaml.safe_load((Path(__file__).parents[1] / "action.yml").read_text(encoding="utf-8"))
+    runs = "\n".join(step.get("run", "") for step in action["runs"]["steps"])
+    assert "head -c 60" not in runs and "pr_body.py\" title" in runs

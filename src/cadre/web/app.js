@@ -34,7 +34,9 @@ function h(tag, attrs, ...kids) {
   return el;
 }
 const $main = () => document.getElementById("main");
-function mount(...nodes) { const m = $main(); m.replaceChildren(...nodes); }
+// replaceChildren would print a null child as the text "null": drop absent optional parts
+function put(el, ...nodes) { el.replaceChildren(...nodes.filter((n) => n !== null && n !== undefined && n !== false)); return el; }
+function mount(...nodes) { put($main(), ...nodes); }
 function toast(msg) {
   const t = document.getElementById("toast");
   t.textContent = msg;
@@ -139,10 +141,10 @@ function viewRuns() {
   const load = async () => {
     const runs = await api("/api/v1/runs");
     empty.classList.toggle("hidden", runs.length > 0);
-    body.replaceChildren(...runs.map((r) => h("tr", { class: "click", onclick: () => (location.hash = `#/run/${r.id}`) },
-      h("td", { class: "small", text: when(r.created) }),
+    put(body, ...runs.map((r) => h("tr", { class: "click", onclick: () => (location.hash = `#/run/${r.id}`) },
+      h("td", { class: "small nowrap", text: when(r.created) }),
       h("td", { text: r.org }),
-      h("td", { text: brief(r.goal, 90) }),
+      h("td", { class: "goal", text: brief(r.goal, 90) }),
       h("td", {}, pill(r.status)),
       h("td", { class: "num", text: fmt(r.calls) }),
       h("td", { class: "num", text: fmt(r.prompt_tokens + r.completion_tokens) }))));
@@ -206,6 +208,7 @@ function describe(e) {
     case "approval.requested": return [approvalBox(d), "warn"];
     case "approval.decided": return [`${d.kind} ${d.approved ? "approved" : "rejected"}${d.answer ? " — " + d.answer : ""}`, ""];
     case "approval.auto": return [`${d.kind} auto-approved: ${brief(d.prompt, 160)}`, "quiet"];
+    case "artifact.written": return [`saved ${d.name}`, "quiet"];
     default: return [brief(JSON.stringify(d), 200), "quiet"];
   }
 }
@@ -215,7 +218,7 @@ function approvalBox(d) {
   const decide = async (approve) => {
     try {
       await api(`/api/v1/approvals/${d.id}`, { method: "POST", body: { approve, answer: answer.value } });
-      box.replaceChildren(`decided: ${approve ? "approved" : "rejected"}`);
+      put(box, `decided: ${approve ? "approved" : "rejected"}`);
       refreshBadge();
     } catch (err) { toast(err.message); }
   };
@@ -267,7 +270,7 @@ function viewRun(rid) {
   const show = (name) => {
     current = name;
     [...tabs.children].forEach((b) => b.classList.toggle("on", b.textContent === name));
-    box.replaceChildren(panes[name]);
+    put(box, panes[name]);
   };
   Object.keys(panes).forEach((n) => tabs.append(h("button", { role: "tab", onclick: () => show(n) }, n)));
   mount(h("p", { class: "small" }, h("a", { href: "#/runs", text: "← all runs" })), head, tiles, tabs, box);
@@ -291,7 +294,7 @@ function viewRun(rid) {
     if (["interrupted", "failed", "stopped", "cancelled", "unapproved", "parked"].includes(r.status)) actions.append(h("button", { onclick: async () => {
       try { await api(`/api/v1/runs/${rid}/resume`, { method: "POST" }); toast("Resumed — finished steps are reused, not re-billed."); follow(); }
       catch (err) { toast(err.message); } } }, "Resume"));
-    head.replaceChildren(h("div", { class: "row spread" },
+    put(head, h("div", { class: "row spread" },
       h("div", {},
         h("h1", {}, r.org, " ", pill(r.status), r.options && r.options.demo ? h("span", { class: "pill", text: "demo" }) : null),
         h("p", { class: "sub", text: r.goal })),
@@ -302,17 +305,17 @@ function viewRun(rid) {
       r.summary && r.summary.unapproved && r.summary.unapproved.length
         ? h("div", { class: "callout", text: `Finished, but not everything was approved: ${r.summary.unapproved.join(", ")}. Open the Timeline to see the open issues.` }) : null);
     const t = r.totals;
-    tiles.replaceChildren(
+    put(tiles, 
       ...[["Model calls", fmt(t.calls)], ["Tokens in", fmt(t.prompt_tokens)], ["Tokens out", fmt(t.completion_tokens)],
         ["Files", fmt(r.files.length)], ["Duration", duration(r.created, r.finished)]]
         .map(([k, v]) => h("div", { class: "tile" }, h("div", { class: "k", text: k }), h("div", { class: "v", text: v }))));
-    usage.replaceChildren(h("table", {},
+    put(usage, h("table", {},
       h("thead", {}, h("tr", {}, ...["Agent", "Provider", "Model", "Calls", "Tokens in", "Tokens out"].map((x, i) => h("th", { class: i > 2 ? "num" : "", text: x })))),
       h("tbody", {}, ...r.usage.map((u) => h("tr", {},
         h("td", { text: u.agent }), h("td", { text: u.provider }), h("td", { class: "mono", text: u.model }),
         h("td", { class: "num", text: fmt(u.calls) }), h("td", { class: "num", text: fmt(u.prompt_tokens) }), h("td", { class: "num", text: fmt(u.completion_tokens) }))))),
       h("p", { class: "hint", text: "On free tiers these tokens cost nothing, but they count against each key's per-minute and per-day limits." }));
-    result.replaceChildren(r.result ? h("pre", { text: r.result }) : h("p", { class: "muted", text: ACTIVE.has(r.status) ? "Still working…" : "No final output." }));
+    put(result, r.result ? h("pre", { text: r.result }) : h("p", { class: "muted", text: ACTIVE.has(r.status) ? "Still working…" : "No final output." }));
     const viewer = h("pre", { class: "hidden" });
     const list = h("div", { class: "filelist" }, ...r.files.map((f) => h("button", { onclick: async (ev) => {
       [...list.children].forEach((b) => b.classList.remove("on"));
@@ -320,7 +323,7 @@ function viewRun(rid) {
       viewer.textContent = await api(`/api/v1/runs/${rid}/files/${f.path.split("/").map(encodeURIComponent).join("/")}`);
       viewer.classList.remove("hidden");
     } }, h("span", { class: "mono", text: f.path }), h("span", { class: "small muted", text: `  v${f.versions} · ${f.agent}` }))));
-    files.replaceChildren(r.files.length ? h("div", { class: "split" }, list, viewer) : h("p", { class: "muted", text: "No files yet." }));
+    put(files, r.files.length ? h("div", { class: "split" }, list, viewer) : h("p", { class: "muted", text: "No files yet." }));
     return r;
   };
 
@@ -355,8 +358,8 @@ async function viewNew(preselect) {
   const demo = h("input", { type: "checkbox", id: "demo", checked: !hasKey });
   const describeOrg = () => {
     const o = orgs.find((x) => x.name === select.value);
-    if (!o) return info.replaceChildren(h("p", { class: "muted", text: "No organisations found." }));
-    info.replaceChildren(
+    if (!o) return put(info, h("p", { class: "muted", text: "No organisations found." }));
+    put(info, 
       h("h3", { text: `${o.title} · ${o.workflow} workflow` }),
       h("p", { class: "muted small", text: o.description }),
       h("div", { class: "agents" }, ...o.agents.map((a) => h("span", { class: "agent" }, h("b", { text: a.id }), ` ${a.role} · ${a.tier}`))),
@@ -398,12 +401,12 @@ async function viewOrgs() {
     const o = await api(`/api/v1/orgs/${encodeURIComponent(n)}`);
     yaml.value = o.yaml;
     name.value = o.source === "yours" || String(o.source).endsWith(".yaml") ? n : `my-${n}`;
-    out.replaceChildren();
+    put(out);
     yaml.scrollIntoView({ behavior: "smooth", block: "center" });
   };
   const validate = async () => {
     const r = await api("/api/v1/orgs/validate", { method: "POST", body: { yaml: yaml.value } });
-    out.replaceChildren(r.valid ? h("div", { class: "callout info", text: `Valid: ${r.agents.length} agents, ${r.workflow} workflow.` })
+    put(out, r.valid ? h("div", { class: "callout info", text: `Valid: ${r.agents.length} agents, ${r.workflow} workflow.` })
       : h("div", { class: "callout" }, h("b", { text: "Not valid:" }), h("ul", {}, ...r.errors.map((e) => h("li", { class: "mono", text: e })))));
     return r.valid;
   };
@@ -442,7 +445,7 @@ async function viewProviders() {
   const quotaBody = h("tbody");
   const loadQuota = async () => {
     const rows = await api("/api/v1/quota");
-    quotaBody.replaceChildren(...rows.map((q) => {
+    put(quotaBody, ...rows.map((q) => {
       const L = q.limits;
       const bar = (used, lim) => {
         if (!lim) return h("span", { class: "small muted", text: `${fmt(used)} / –` });
@@ -470,13 +473,13 @@ async function viewProviders() {
   const syncPreset = () => {
     const p = presets.find((x) => x.id === presetSel.value);
     if (!p) return;
-    presetNote.replaceChildren(
+    put(presetNote, 
       p.note ? h("div", { text: p.note }) : null,
       h("div", {}, `Limits source: ${p.source} (checked ${presetInfo.checked}). `,
         p.signup ? h("a", { href: p.signup, target: "_blank", rel: "noopener noreferrer", text: "Get a key" }) : null),
       h("div", { text: p.models.length ? `Suggested models: ${p.models.join(", ")}` : "Models are discovered from the endpoint." }));
     key.disabled = p.local;
-    params.replaceChildren(...p.params.map((name) => h("div", {}, h("label", { text: name }), h("input", { type: "text", "data-param": name }))));
+    put(params, ...p.params.map((name) => h("div", {}, h("label", { text: name }), h("input", { type: "text", "data-param": name }))));
   };
   presetSel.addEventListener("change", syncPreset);
   syncPreset();
@@ -498,7 +501,7 @@ async function viewProviders() {
     const status = h("span", { class: "small muted" });
     return h("div", { class: "panel" },
       h("div", { class: "row spread" },
-        h("div", {}, h("h3", { text: `${p.label} (${p.id})` }),
+        h("div", {}, h("h3", {}, p.label, " ", h("code", { text: p.id })),
           h("span", { class: `pill ${p.key === "missing" ? "bad" : "good"}`, text: p.key === "missing" ? "no key" : `key: ${p.key}` }),
           p.disabled_reason ? h("div", { class: "callout", text: p.disabled_reason }) : null),
         h("div", { class: "row" },
@@ -558,7 +561,7 @@ function viewUsage() {
   const load = async () => {
     const rows = await api(`/api/v1/usage?days=${days.value}`);
     empty.classList.toggle("hidden", rows.length > 0);
-    body.replaceChildren(...rows.map((r) => h("tr", {},
+    put(body, ...rows.map((r) => h("tr", {},
       h("td", { class: "small", text: r.day }),
       h("td", { text: r.provider }),
       h("td", { class: "mono", text: r.model }),
@@ -569,7 +572,7 @@ function viewUsage() {
       h("td", { class: "small", text: r.next_reset || "" }))));
   };
   days.addEventListener("change", () => load().catch((e) => toast(e.message)));
-  api("/api/v1/orgs").then((orgs) => org.replaceChildren(...orgs.filter((o) => o.valid)
+  api("/api/v1/orgs").then((orgs) => put(org, ...orgs.filter((o) => o.valid)
     .map((o) => h("option", { value: o.name, text: o.name })))).catch(() => {});
   const run = h("button", { onclick: async () => {
     try {
@@ -608,7 +611,7 @@ function viewApprovals() {
     const ids = items.map((a) => a.id).join(",");
     if (ids === shown) return; // don't wipe an answer being typed
     shown = ids;
-    box.replaceChildren(...(items.length ? items.map((a) => h("div", { class: "panel" },
+    put(box, ...(items.length ? items.map((a) => h("div", { class: "panel" },
       h("p", { class: "small" }, h("a", { href: `#/run/${a.run_id}`, text: `run ${a.run_id}` }), a.agent ? ` · ${a.agent}` : "", ` · ${when(a.created)}`),
       approvalBox(a))) : [h("p", { class: "muted", text: "Nothing is waiting for you." })]));
   };

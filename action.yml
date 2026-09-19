@@ -142,10 +142,11 @@ runs:
         BRANCH: ${{ steps.run.outputs.branch }}
         BASE: ${{ inputs.base || github.event.repository.default_branch }}
         GOAL: ${{ inputs.goal }}
+        ISSUE: ${{ inputs.issue-number }}
       run: |
         git push origin "$BRANCH"
         python3 "$GITHUB_ACTION_PATH/action/pr_body.py" body "$RUNNER_TEMP/result.json" > "$RUNNER_TEMP/pr.md"
-        title="Cadre: $(printf '%s' "$GOAL" | head -c 60)"
+        title=$(python3 "$GITHUB_ACTION_PATH/action/pr_body.py" title)
         url=$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$BASE" --head "$BRANCH" \
               --title "$title" --body-file "$RUNNER_TEMP/pr.md")
         echo "url=$url" >> "$GITHUB_OUTPUT"

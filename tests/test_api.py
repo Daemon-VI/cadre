@@ -56,6 +56,9 @@ def test_dashboard_is_served_with_a_strict_policy(client):
     assert "access-control-allow-origin" not in r.headers
     js = client.get("/static/app.js").text
     assert "innerHTML" not in js and "eval(" not in js
+    # the DOM turns a null child into the text "null" (a run page showed "nullnullnull"), so every
+    # replaceChildren goes through put(), which drops the optional parts that are absent
+    assert js.count(".replaceChildren(") == 1 and "function put(" in js
     assert client.get("/static/../api.py").status_code == 404
 
 
