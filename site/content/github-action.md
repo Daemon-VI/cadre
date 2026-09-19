@@ -16,8 +16,8 @@ body is its report plus a usage table. A human merges it, or doesn't.
 > tokens on free Gemini and Groq keys, about 75 seconds, with the review done by a different
 > model family from the engineer and all 7 tests passing on the branch. On Groq alone the same job
 > took about 7 minutes ([#2](https://github.com/Daemon-VI/cadre-action-demo/pull/2)). The first
-> two tries failed and exposed four bugs, all now fixed. `Daemon-VI/cadre@v1` needs a `v1` tag that has
-> not been pushed yet, so pin a commit (as the demo does) until it exists.
+> two tries failed and exposed four bugs, all now fixed. Since 1.0.0 the demo uses `Daemon-VI/cadre@v1`,
+> and its first run through that tag opened [#5](https://github.com/Daemon-VI/cadre-action-demo/pull/5).
 
 ## Set it up
 

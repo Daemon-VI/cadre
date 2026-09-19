@@ -71,9 +71,9 @@ it, so routing, quotas and approvals exist in one place only.
 |---|---|---|
 | [Command line](cli.html) | You work in a terminal | works from a clone; PyPI publish pending |
 | [AI editors (MCP)](mcp.html) | Claude Code, VS Code, Cursor, Windsurf or Antigravity should start runs | verified with a real MCP client; not yet in each host |
-| [GitHub Action](github-action.html) | An issue labelled `cadre` should become a pull request | written; not yet run on a real repository |
+| [GitHub Action](github-action.html) | An issue labelled `cadre` should become a pull request | `uses: Daemon-VI/cadre@v1`; tested on a real repository |
 | [VS Code extension](vscode.html) | You want runs, usage and approvals inside the editor | not yet published |
-| [Containers and downloads](containers.html) | A server, or a machine without Python | not yet published |
+| [Containers and downloads](containers.html) | A server, or a machine without Python | 1.0.0 on GHCR and the GitHub Release |
 
 ## What makes it different
 

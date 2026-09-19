@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (Cadre is public; CI green on three OSs; docs site live; the GitHub Action verified on a real repo, PR #2; first publishes wait on Rithik)_
+_Last updated: 2026-09-19 (1.0.0 tagged: GitHub Release, GHCR and the Action's `v1` live; PyPI blocked on the TestPyPI publisher; dashboard and extension seen on screen)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,12 +13,56 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: v1.0 programme complete through M11 — not yet tagged
-_Built and verified offline through M10 (2026-09-17), then run live on Groq and Google AI Studio free
-keys: all five templates (M5) and both capstones (M11) — see the tables below. 170 tests pass
-(1 skipped). **v1.0.0 is not tagged**: one definition-of-done item fails (keys in the transcript;
-see "Definition of done" below). The v0.1.0 section that follows is the offline record of
-2026-09-16 and is kept as history._
+## Status: 1.0.0 tagged and released 2026-09-19 — PyPI still pending
+_One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D5); see "1.0.0 release"
+below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
+
+## 1.0.0 release (2026-09-19, `PROMPT_RELEASE.md`)
+
+Tag `v1.0.0` on c0073ba (CI green on that commit, 10 jobs). Release run 35436705812: wheel/sdist,
+three standalone builds, container image and GitHub Release **succeeded**; **TestPyPI failed** with
+`invalid-publisher` (the OIDC claims were exactly `Daemon-VI/cadre`, `release.yml`, environment
+`testpypi`, so test.pypi.org has no matching pending publisher), and PyPI was skipped because it
+needs TestPyPI. Nothing was uploaded, so once Rithik adds the publisher the two jobs are re-run on
+the same tag; no new version is needed.
+
+### Published channels
+
+| Channel | Version | Where | How it was verified |
+|---|---|---|---|
+| GitHub Release | 1.0.0 | github.com/Daemon-VI/cadre/releases/tag/v1.0.0 | 5 assets (wheel, sdist, Windows/macOS-arm64/Linux builds). The Windows zip, downloaded with `gh release download` into a clean folder: `cadre 1.0.0`, and `run decision-board … --demo` succeeded |
+| GHCR | 1.0.0, 1.0, latest, sha-c0073ba | ghcr.io/daemon-vi/cadre | anonymous pull token → manifest 200 for `1.0.0` and `latest` (so the package is public). Not run on this laptop: Docker Desktop was stopped and 0.9 GB RAM was free. The release job's smoke test ran it as uid 10001, `--version`, and a demo run that succeeded |
+| GitHub Action | `v1` → c0073ba | `uses: Daemon-VI/cadre@v1` | `cadre-action-demo` switched to `@v1`; issue #4 (labelled) → run `20260919-101549-2299e0` succeeded → PR #5 (+1 line, a docstring; 19 calls, 33,835 + 1,554 tokens; reviewer used Qwen and gpt-oss) |
+| PyPI / TestPyPI | — | — | **not published**: `invalid-publisher` on TestPyPI (above) |
+| VS Code Marketplace / Open VSX | — | — | not published: `VSCE_PAT` and `OVSX_PAT` are not set |
+| GitHub Marketplace | — | — | not listed: needs Rithik to tick the box on the release page (agreement + 2FA) |
+
+### Seen on screen for the first time (2026-09-19)
+
+**Dashboard**, driven by headless Edge over the DevTools protocol (the Chrome extension was not
+connected) at 1400 px, 390 px and in dark mode, against the real `~/.cadre`. Zero console errors.
+Fixed (75bbbd3): a run page printed `nullnullnull` under the goal (DOM `replaceChildren` turns a
+null child into text; every call now goes through `put()`, pinned by a static test); usage meters
+shrank on rows with "near cap"; start times wrapped "pm"; phone width squeezed goals to a word per
+line; `artifact.written` printed raw JSON with the absolute path; the provider heading read
+"Google AI Studio (Gemini) (gemini)".
+
+**VS Code extension**, in a separate VS Code 1.138 instance (its own user-data and extensions
+folders in the scratchpad; Rithik's own VS Code untouched), on a fixture copy of the demo repo,
+against a scratch `CADRE_HOME` with no keys so runs used the offline demo. Forecast (an honest
+"cannot run: no usable model"), Start run on this folder → "Run demo", the live run view, and
+Review branch (3 files, diff opens base ↔ branch) all work. **Found a real hazard:** the exec
+approval modal, opened by the 5 s poll, took keyboard focus with "Allow execution" as its default
+button; two demo runs were approved about 4 s after asking by keys pressed in another window
+(the extension's log: `[approval] exec … approved`), and a third, left alone, stayed pending.
+Fixed (b2c0bae): a poll shows a notification (Review… / Open run) that never takes focus; the
+modal opens only from Review…, Decide… or Review pending approvals. Re-checked on screen: the
+notification appeared, the status bar read "Cadre · 2 approvals", and both stayed pending.
+Also noted: after a Reject, the engine asks again on the agent's next `run_check`.
+
+**Action** (PR #5): the title took the first 60 bytes of the goal, newline included. Fixed
+(75bbbd3): the goal's first line, cut at a word; the PR body ends with `Closes #N`. These reach
+`@v1` users only with a 1.0.1 and a `v1` move (Rithik's call).
 
 ### v0.1.0 (2026-09-16) — verified offline
 

@@ -5,9 +5,11 @@ description: Run Cadre in a container (non-root, state in /data, keys from the e
 
 # Containers and standalone downloads
 
-> **Not yet published.** The image and the standalone builds are produced by the release workflow,
-> which has not run yet, so neither `ghcr.io/daemon-vi/cadre` nor a GitHub Release exists today.
-> The instructions below describe what that workflow builds.
+> **Published with 1.0.0 (2026-09-19).** `ghcr.io/daemon-vi/cadre` has the tags `1.0.0`, `1.0` and
+> `latest`, and pulls without logging in. The release workflow's smoke test ran it as user 10001
+> and completed a demo run. The standalone builds for Windows, macOS (arm64) and Linux are on the
+> [1.0.0 release](https://github.com/Daemon-VI/cadre/releases/tag/v1.0.0); the Windows one printed
+> `cadre 1.0.0` and finished a demo run when downloaded and unpacked on a clean folder.
 
 ## Container
 
