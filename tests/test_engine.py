@@ -281,6 +281,27 @@ async def test_rejected_gate_stops_the_run(tmp_path, store):
         await engine.run()
 
 
+async def test_a_refused_exec_approval_is_not_asked_again_in_the_same_run(tmp_path, store):
+    """After the operator refuses execution, later run_check calls in the same run fail
+    immediately without asking again (ADR-035). Only a new run asks."""
+    asked = 0
+
+    async def refuse(kind, prompt, agent):
+        nonlocal asked
+        if kind == "exec":
+            asked += 1
+        return False, "not this time"
+
+    router, *_ = two_family_router(by_agent({}))
+    _, ctx = make_engine(tmp_path, store, REVIEW_ORG, router, approver=refuse)
+    first = await ctx.run_check("tests", "eng", "s")
+    second = await ctx.run_check("tests", "eng", "s")
+    assert asked == 1                          # asked once, not once per check
+    assert not first.passed and not second.passed
+    assert "refused earlier in this run" in second.note
+    assert "new run" in second.note
+
+
 async def test_parallel_join_and_named_outputs(tmp_path, store):
     org = """
 name: t

@@ -3,7 +3,20 @@
 All dates are 2026. Numbers come from `docs/PROJECT_STATE.md`, where each one is traced to a test,
 observed output, or a dated source.
 
-## Unreleased
+## 1.2.0 — 2026-09-19
+
+This release ships M13 (multi-user organisations: accounts and teams). Three things it does **not**
+do, stated plainly:
+- **OIDC SSO is not included** — per-user bearer tokens remain the only sign-in (deferred to M13.1,
+  a prerequisite of hosting).
+- **Team budgets are checked when a run starts, not during each model call** — a run already going
+  is never interrupted, and a team can exceed a per-day cap mid-run (ADR-034).
+- **Reads are not scoped by team** — any signed-in user can read any run; only side-effecting
+  actions (cancel, resume, approve) and starting a run are team-scoped (ADR-034).
+
+### Fixed
+- A refused exec approval no longer re-asks. Once the operator declines the exec prompt, later
+  checks in the same run fail without asking again; only a new run asks (ADR-035).
 
 ### Added — users, roles and API tokens (M13 phase 1, FR-23)
 - More than one person can share one Cadre server. Each has a bearer token and a role: **viewer**

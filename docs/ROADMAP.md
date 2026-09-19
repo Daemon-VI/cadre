@@ -33,7 +33,7 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M10** | Multi-day runs | G4 · FR-9 | done 2026-09-17 (offline, fake clock; scheduler not installed) |
 | **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | capstone done 2026-09-18 (both succeeded); release pending the definition-of-done items in PROJECT_STATE |
 | **M12** | Container runner for checks | FR-22 · ADR-031 | done 2026-09-19; **released in 1.1.0** (containment tested in Linux CI under Docker and Podman; one check run in Docker Desktop on the laptop) |
-| **M13** | Multi-user organisations | FR-23 · ADR-032/033/034 | **done 2026-09-19** except OIDC: users, roles, hashed tokens, RBAC, audit (phase 1); teams, per-team budgets and model allowances, action routing (phase 2). OIDC SSO deferred to M13.1 |
+| **M13** | Multi-user organisations | FR-23 · ADR-032/033/034 | **done 2026-09-19** except OIDC: users, roles, hashed tokens, RBAC, audit (phase 1); teams, per-team budgets and model allowances, action routing (phase 2). OIDC SSO deferred to M13.1, a prerequisite of M16 |
 | M14 | Memory across runs | — | **next** |
 | M15 | Web research tool | — | after v1.0 |
 | M16 | Hosted deployment | — | after v1.0 |
@@ -100,15 +100,20 @@ role, independence, check results, repairs and 429s. Then `claim-auditor`, versi
 - **M12 — container runner for checks. Done 2026-09-19** (`PROMPT_M12.md`, FR-22, ADR-031).
   Optional `runner: docker|podman` per check: workspace mounted, no network, CPU/memory caps.
   Subprocess stays the default because Docker next to a Gradle build does not fit this laptop.
-  Released in 1.1.0 on 2026-09-19; `v1` still on 1.0.1 until Rithik says to move it.
-- **M13 — multi-user organisations.** Users and roles, per-team budgets and model allowances,
-  approvals routed to a role, an audit log, OIDC SSO. Shared keys stay server-side.
+  Released in 1.1.0 on 2026-09-19; `v1` moved to 1.1.0 the same day (proven on the demo repo, PR #9).
+- **M13 — multi-user organisations. Done 2026-09-19** except OIDC (FR-23, ADR-032/033/034).
+  Users and roles, hashed API tokens, RBAC and an audit log (phase 1); teams, per-team budgets
+  and model allowances, and action routing (phase 2). Shared keys stay server-side. Unreleased —
+  a 1.2.0 carrying it needs Rithik's yes.
+- **M13.1 — OIDC SSO.** Deferred: it needs a real identity provider and can't be tested offline.
+  Now a prerequisite of **M16 (hosting)** — single sign-on only matters once Cadre is hosted, so
+  it is built when M16 is.
 - **M14 — memory across runs.** Per-org knowledge files injected under a hard cap; files before
   a vector database, because every token of memory is replayed on every call.
 - **M15 — web research tool.** `fetch_url` / `search` with fetched text treated strictly as
   data, domain allow lists and size caps.
-- **M16 — hosted deployment.** Dockerfile, optional Postgres, TLS guidance, M13's auth in front —
-  never before M12 and M13.
+- **M16 — hosted deployment.** Dockerfile, optional Postgres, TLS guidance, M13's auth in front
+  (including M13.1 OIDC SSO) — never before M12 and M13.
 
 ## Distribution track D0–D7 (shipped in 1.0.0; added 2026-09-18)
 

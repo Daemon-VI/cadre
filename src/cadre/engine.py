@@ -188,6 +188,9 @@ class RunContext:
         #: every model family each agent has used in this run (ADR-004)
         self.families: dict[str, list[str]] = {}
         self._exec_approved = self.options.allow_exec is True
+        #: once the operator refuses execution, it stays refused for the rest of this run — later
+        #: checks fail without asking again; only a new run asks (ADR-035).
+        self._exec_refused = False
         self._containers = 0
         self.private = (self.options.privacy or org.privacy) == "private"
         self._last_beat = 0.0
@@ -365,10 +368,19 @@ class RunContext:
         # `container_only`: a check in a container with no network runs without asking (ADR-031)
         auto = spec.contained and self.options.allow_exec == CONTAINER_ONLY and not self._exec_approved
         if not (self._exec_approved or auto):
+            if self._exec_refused:
+                # already refused this run; don't pester the operator again (ADR-035)
+                result = CheckResult(name, False, None, "", 0.0,
+                                     "execution was refused earlier in this run; not asking again — "
+                                     "start a new run to allow checks", spec.runner)
+                self.emit("check.finished", agent=agent, step=step, **result.as_dict())
+                return result
             ok, _ = await self.approve("exec", self.exec_prompt(), agent, step)
             if not ok:
+                self._exec_refused = True
                 result = CheckResult(name, False, None, "", 0.0,
-                                     "execution was not approved by the operator", spec.runner)
+                                     "execution was not approved by the operator; checks will not "
+                                     "be asked again in this run", spec.runner)
                 self.emit("check.finished", agent=agent, step=step, **result.as_dict())
                 return result
             self._exec_approved = True

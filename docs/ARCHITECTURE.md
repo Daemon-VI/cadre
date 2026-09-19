@@ -604,3 +604,18 @@ impossible allowance fails at start, a teammate but not an outsider may cancel, 
 team you are not in is `403`, `/me` lists teams, admin-only `/teams`. `tests/test_router.py`
 proves the allowance filters candidate models. `tests/test_cli.py` covers the `cadre team …`
 lifecycle.
+
+### ADR-035 — A refused exec approval holds for the whole run (M13.2 / 1.2.0)
+
+**Context.** The `exec` approval is run-wide: one prompt lists every declared check, and approving
+it lets all of them run (ADR-006). But a *refusal* set no state, so the next `run_check` asked
+again — an agent that retried a check re-prompted the operator on every attempt.
+
+**Decision.** A refusal is sticky for the rest of the run. Once the operator declines the exec
+prompt, `run_check` records it and every later check **fails immediately without asking again**,
+telling the agent execution was refused and that only a **new run** will ask. Approval stays
+per-run too (`_exec_approved`), so a new run always re-asks. Container-only checks are unaffected:
+they never needed the prompt, so a refusal of the run-as-you prompt does not stop them.
+
+**Proof.** `tests/test_engine.py::test_a_refused_exec_approval_is_not_asked_again_in_the_same_run`:
+after a refusal, a second `run_check` fails without a second prompt.
