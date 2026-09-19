@@ -1,0 +1,6 @@
+# Findings reviewed by hand. Each line is one gitleaks fingerprint; add one only for a value that
+# is provably not a credential, and say why.
+#
+# tests/test_providers.py: the made-up "sk-secret-…" value in test_errors_never_contain_the_key,
+# which asserts that provider errors never echo a key back. Not a real key (reviewed 2026-09-19).
+d8975a2424ba575a1caa4f1b20b6af270ad4fbbd:tests/test_providers.py:generic-api-key:106
