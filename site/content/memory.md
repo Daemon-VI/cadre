@@ -26,7 +26,7 @@ than failing the run.
 A run sees three files, merged:
 
 - **Global** — facts true of every project (`memory/global.md`).
-- **Team** — a team's shared facts (`memory/teams/<team>.md`), per the [teams model](security#teams).
+- **Team** — a team's shared facts (`memory/teams/<team>.md`), per the [teams model](security.html).
   Only an admin or a member of that team may add, approve or delete them.
 - **Project** — keyed by the repository's **root commit** (`memory/projects/<commit>.md`), so a
   renamed or moved checkout keeps its memory and two clones of the same repo share it.

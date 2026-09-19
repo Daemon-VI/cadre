@@ -130,7 +130,7 @@ unapproved; fixed in 1.1.0.) A waiting run tells you to use `cadre approve <id>`
 
 ## Memory is data, never instructions
 
-Cadre can [remember facts across runs](memory) and replay them into later runs. Memory is
+Cadre can [remember facts across runs](memory.html) and replay them into later runs. Memory is
 **persistent prompt injection**: a line written by a model, or copied from text a model read, is
 replayed into every later call. So it is injected as labelled data, in the same untrusted-input
 frame as tool output — it cannot grant an approval, change the tool allowlist, add a provider or
