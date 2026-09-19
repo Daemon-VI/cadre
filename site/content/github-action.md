@@ -82,7 +82,9 @@ and `issues` write permissions and nothing else. More on why in the
 1. Installs Cadre from the action's own source, so the action and the engine are the same version.
 2. Registers every free provider whose key is in the environment (`CADRE_NO_KEYRING=1`; there is
    no keychain on a runner).
-3. Posts the forecast on the issue.
+3. Posts the forecast on the issue. Every job starts with an empty usage ledger, so "left today"
+   is the providers' full free limits: it can't see what your laptop, or an earlier job, has already
+   spent against the same key. A provider that runs out mid-run still parks it correctly.
 4. Runs the org on the checkout in project mode. The goal travels in an environment variable and is
    never pasted into a shell line. Gates are approved automatically (`--yes`), and with
    `allow-exec: true` (the default) checks run without asking, because the runner is a throwaway

@@ -109,16 +109,33 @@ runs:
         code=$?
         set -e
         if [ -f "$RUNNER_TEMP/result.json" ]; then
-          python3 "$GITHUB_ACTION_PATH/action/pr_body.py" outputs "$RUNNER_TEMP/result.json" >> "$GITHUB_OUTPUT"
+          python3 "$GITHUB_ACTION_PATH/action/pr_body.py" outputs "$RUNNER_TEMP/result.json" | tee -a "$GITHUB_OUTPUT"
+          rid=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['id'])" "$RUNNER_TEMP/result.json")
+          # the whole timeline, in the log (GitHub masks secrets there) so any outcome can be diagnosed
+          echo "::group::Cadre timeline"; cadre show "$rid" --events || true; echo "::endgroup::"
+          mkdir -p "$RUNNER_TEMP/cadre-artifacts"
+          cp -r "$CADRE_HOME/runs/$rid/artifacts/." "$RUNNER_TEMP/cadre-artifacts/" 2>/dev/null || true
         else
           echo "status=not-started" >> "$GITHUB_OUTPUT"
         fi
         echo "cadre exited $code"
         exit 0  # the outcome is reported below; a failed run still gets its comment
 
+    - name: Keep the run's report and plan
+      if: always() && steps.run.outputs.run-id != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: cadre-${{ steps.run.outputs.run-id }}
+        path: ${{ runner.temp }}/cadre-artifacts/
+        if-no-files-found: ignore
+        retention-days: 14
+
     - name: Push the branch and open a pull request
       id: pr
-      if: steps.run.outputs.status == 'succeeded' || steps.run.outputs.status == 'unapproved'
+      # an empty branch has nothing to review: GitHub refuses a pull request with no commits
+      if: >-
+        (steps.run.outputs.status == 'succeeded' || steps.run.outputs.status == 'unapproved') &&
+        steps.run.outputs.commits != '0'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}

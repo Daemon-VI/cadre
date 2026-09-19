@@ -7,9 +7,10 @@ comment for the GitHub Action (FR-18). Standard library only; runs with the runn
 from __future__ import annotations
 
 import json
+import os
 import sys
 
-MAX_REPORT = 60_000  # GitHub caps a PR body at 65,536 characters
+MAX_REPORT = 60_000  # GitHub caps a PR body and a comment at 65,536 characters
 
 
 def usage_table(r: dict) -> str:
@@ -23,10 +24,15 @@ def usage_table(r: dict) -> str:
     return "\n".join(rows)
 
 
-def body(r: dict) -> str:
+def report_text(r: dict, limit: int = MAX_REPORT) -> str:
     report = (r.get("result") or "_The run returned no report._").strip()
-    if len(report) > MAX_REPORT:
-        report = report[:MAX_REPORT] + "\n\n…(cut; the full report is in the run's workspace)"
+    if len(report) > limit:
+        report = report[:limit] + "\n\n…(cut; the full report is in the workflow run's artifact)"
+    return report
+
+
+def body(r: dict) -> str:
+    report = report_text(r)
     commits = "\n".join(f"- `{c}`" for c in r.get("commits", [])[:30]) or "- (none)"
     status = r["status"] + (" — a gate or check did not approve; review with extra care"
                             if r["status"] == "unapproved" else "")
@@ -37,26 +43,37 @@ def body(r: dict) -> str:
             "other pull request._\n")
 
 
-def comment(r: dict) -> str:
+def comment(r: dict, pr_url: str = "") -> str:
     s = r["status"]
     if s == "parked":
         return (f"Cadre run `{r['id']}` is **parked**: every model it can use hit a daily free-tier "
                 f"limit. It could continue after about **{r.get('resume_at_ist')}**. This action "
                 "does not resume across jobs yet; re-run it after that time.")
+    if pr_url:
+        return f"Cadre run `{r['id']}` finished ({s}): {pr_url} has the report and usage."
     if s in ("succeeded", "unapproved"):
-        return f"Cadre run `{r['id']}` finished ({s}). See the pull request for the report and usage."
-    return f"Cadre run `{r['id']}` ended **{s}**: {r.get('error') or 'see the workflow log'}"
+        head = (f"Cadre run `{r['id']}` finished ({s}) with {len(r.get('commits', []))} commit(s), "
+                "so there is **no pull request**.")
+    else:
+        head = f"Cadre run `{r['id']}` ended **{s}**: {r.get('error') or 'see the workflow log'}"
+    return (f"{head} The timeline is in the workflow log (group \"Cadre timeline\").\n\n"
+            f"<details><summary>Report</summary>\n\n{report_text(r, 50_000)}\n\n</details>\n\n"
+            f"**Usage (free keys)**\n\n{usage_table(r)}\n")
 
 
 def outputs(r: dict) -> str:
-    return "\n".join([f"run-id={r['id']}", f"status={r['status']}", f"branch={r.get('branch') or ''}"])
+    return "\n".join([f"run-id={r['id']}", f"status={r['status']}", f"branch={r.get('branch') or ''}",
+                      f"commits={len(r.get('commits', []))}"])
 
 
 def main() -> int:
     mode, path = sys.argv[1], sys.argv[2]
     with open(path, encoding="utf-8") as f:
         r = json.load(f)
-    print({"outputs": outputs, "body": body, "comment": comment}[mode](r))
+    if mode == "comment":
+        print(comment(r, os.environ.get("PR_URL", "")))
+    else:
+        print({"outputs": outputs, "body": body}[mode](r))
     return 0
 
 

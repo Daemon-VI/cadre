@@ -253,6 +253,31 @@ def test_action_formats_outputs_body_and_parked_comment(home, tmp_path):
     assert "${{ inputs.goal }}" not in runs  # the goal reaches shells only through env vars
 
 
+def test_action_opens_no_pr_for_an_empty_branch_and_the_comment_carries_the_report():
+    import yaml
+
+    pr = _tool_at("action", "pr_body")
+    r = {"id": "20260919-051254-c887fb", "org": "project-finisher", "goal": "finish it",
+         "status": "unapproved", "error": None, "result": "Task w/0: tests still fail (2 of 7).",
+         "branch": "cadre/20260919-051254-c887fb", "commits": [], "diff_stat": "",
+         "totals": {"calls": 9, "prompt_tokens": 12_000, "completion_tokens": 900}, "usage": []}
+    assert "commits=0" in pr.outputs(r).splitlines()
+    # no pull request: the issue comment must say so and carry the report and usage itself
+    c = pr.comment(r, pr_url="")
+    assert "no pull request" in c.lower() and "tests still fail (2 of 7)" in c and "| **total** |" in c
+    # with a pull request, the comment links it instead of repeating the report
+    c = pr.comment(dict(r, commits=["abc123 fix"]), pr_url="https://github.com/o/r/pull/2")
+    assert "https://github.com/o/r/pull/2" in c and "tests still fail" not in c
+    assert len(pr.comment(dict(r, result="x" * 100_000), pr_url="")) < 65_536
+
+    action = yaml.safe_load((Path(__file__).parents[1] / "action.yml").read_text(encoding="utf-8"))
+    steps = {s.get("id") or s.get("name"): s for s in action["runs"]["steps"]}
+    assert "steps.run.outputs.commits != '0'" in steps["pr"]["if"]
+    assert "PR_URL" in steps["Report on the issue"]["env"]
+    # the timeline goes to the (secret-masked) log so a failed run can be diagnosed afterwards
+    assert any("--events" in s.get("run", "") for s in action["runs"]["steps"])
+
+
 def _github_tag_filter(pattern):
     """GitHub's tag filter syntax (`*`, `?`, `+`, `[...]`, all else literal) as a full-match regex."""
     import re
