@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (1.1.0 released: M12 container runner + two security fixes; `v1` still on 1.0.1 until Rithik says to move it; next: M13)_
+_Last updated: 2026-09-19 (1.1.0 released: M12 container runner + two security fixes; `v1` moved to 1.1.0 and proven on the demo repo; MCP-bypass advisory drafted for Rithik; next: M13)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -25,9 +25,9 @@ clean uv cache and a new `CADRE_HOME`: `cadre 1.1.0`, and a `decision-board --de
 (needed `uvx --refresh` — PyPI's JSON API lagged the simple index by a few minutes, as with 1.0.1,
 though the simple index had 1.1.0 within ~20 s). SHA-256 identical on PyPI, TestPyPI and the GitHub
 Release: `077a3153…` wheel (154,302 bytes), `5320d3da…` sdist. GHCR `1.1.0`, `1.1` and `latest`
-all return manifest 200 anonymously. **`v1` was NOT moved** — it still points at 1.0.1 (18e4aec);
-moving it to 1.1.0 is a separate decision for Rithik. This release closes, on PyPI, the MCP
-`allow_exec` bypass that 1.0.0 and 1.0.1 carried.
+all return manifest 200 anonymously. This release closes, on PyPI, the MCP `allow_exec` bypass that 1.0.0 and 1.0.1 carried.
+
+On Rithik's separate yes, **`v1` was moved to 1.1.0** (4be50cd; `git tag -f`, pushed `--force` for `v1` only). Proof: labelled issue #8 on `cadre-action-demo` -> run 35450766290 downloaded `Daemon-VI/cadre@v1` at **4be50cd** -> PR #9, one-line title, body ends `Closes #8`, tests pass. The GitHub Marketplace shows **v1.1.0** as Latest. A GitHub security advisory for the MCP bypass (affected 1.0.0/1.0.1, fixed 1.1.0) is drafted for Rithik to publish.
 
 ## M12 — container runner for checks — released in 1.1.0, 2026-09-19 (`PROMPT_M12.md`)
 
@@ -605,10 +605,9 @@ Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 r
 ## Where to pick up
 1. **Next: `ROADMAP.md` M13**, multi-user organisations.
 2. Waiting on Rithik, each his call:
-   - **Move `v1` to 1.1.0** (a separate yes to the release itself). `v1` still points at 1.0.1
-     (18e4aec), so `uses: Daemon-VI/cadre@v1` does not yet run the container runner. It also does
-     not matter for the MCP bypass, which was never in the Action. Move: `git tag -f -a v1
-     v1.1.0^{commit}` then push `--force` for `v1` only, and prove it with one labelled demo issue.
+   - **Publish the security advisory** for the MCP `allow_exec` bypass. Draft text is in
+     `docs/SECURITY_ADVISORY_DRAFT.md`: affected 1.0.0/1.0.1, fixed 1.1.0. Create it under the
+     repo's Security → Advisories (GHSA); publishing is his act.
    - **VS Code extension publish**: `gh secret list` shows no secrets, and the `vscode-marketplace`
      environment the publish job uses does not exist yet. He creates the publisher `daemon-vi` on
      the VS Code Marketplace, both tokens, and runs `gh secret set VSCE_PAT` / `gh secret set
@@ -626,7 +625,7 @@ Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 r
 4. Done, for the record: keys rotated (a new key goes in with `provider key <id>`, not `provider
    add`); the scheduler job is installed (every 30 min; remove with `cadre scheduler uninstall`);
    the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0,
-   1.0.1 and 1.1.0 releases; M12.
+   1.0.1 and 1.1.0 releases; M12; `v1` moved to 1.1.0 (proven on the demo repo, PR #9).
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`
