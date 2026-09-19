@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (distribution D0–D5 built; CI green on three OSs × two Pythons; the public switch waits on Rithik; v1.0.0 still waits on key rotation)_
+_Last updated: 2026-09-19 (Cadre is public; CI green on three OSs; docs site live; the GitHub Action verified on a real repo, PR #2; first publishes wait on Rithik)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -134,6 +134,45 @@ never echo a key. That fingerprint is now allowlisted, with the reason, in `.git
 | vscode (35419737533) | typecheck, lint, unit tests and `.vsix` on ubuntu and windows; the Electron integration test under xvfb on ubuntu |
 | Docs site (35419846409) | build and link check green; deploy skipped while the repo is private |
 
+**Public since 2026-09-19** (Rithik's yes). Pages is live at https://daemon-vi.github.io/cadre/:
+a crawl fetched 10 pages and 14 internal URLs, none broken. The deploy is skipped while the repo is
+private. Private vulnerability reporting is on. **The site has not been looked at in a browser**:
+the Chrome extension was not connected.
+
+### D3 on a real repository (2026-09-19)
+
+`Daemon-VI/cadre-action-demo` is public and was created on Rithik's yes. It holds `textstats`, a
+package where `word_count` works and `top_words` and `reading_time` are stubs, so 5 of 7 unittest
+tests fail. `.cadre/checks.yaml` runs the tests. A reference implementation passed all 7 before
+publishing. The repository has the `cadre` label and "Allow GitHub Actions to create pull
+requests" on. Rithik set both secrets himself with `gh secret set`. The workflow pins a Cadre
+commit, because no `v1` tag exists.
+
+| Run | Trigger | Outcome | What it exposed |
+|---|---|---|---|
+| 1 (`20260919-051254-c887fb`) | issue #1 labelled `cadre` | forecast comment posted; `unapproved` with 0 commits; the pull-request step then **failed** with "No commits between main and cadre/…" | the Action opened a PR for an empty branch, and its comment said "see the pull request". The reason for the failure was lost with the runner |
+| — | `/cadre …` comment sent from Git Bash | **skipped**, correctly | MSYS path conversion rewrote the body to `C:/Program Files/Git/cadre …`, so the trigger guard rejected it (`MSYS_NO_PATHCONV=1`) |
+| 2 (`20260919-052024-b28d53`) | `/cadre …` comment | `unapproved`, 0 commits, no PR, report and usage on the issue: 23 calls, 50,112 + 3,433 tokens, ~12 min | (a) the `GEMINI_API_KEY` secret was invalid, and Google's 400 bad-key reply was retried on five models on every call, leaving everything on Groq's 8,000 TPM (each engineer call waited ~58 s); (b) `edit_file` failed on two identical `raise NotImplementedError` lines ("matches 2 times" / "0 times") until the engineer ran out of turns; (c) **the engineer said "Implemented…" but the `tests` check failed, and the gate held** |
+| 3 (`20260919-061803-9643b6`) | `/cadre …` comment | **succeeded → [PR #2](https://github.com/Daemon-VI/cadre-action-demo/pull/2)**, 1 commit, +19/−2 in `textstats/core.py`: 18 calls, 31,067 + 3,155 tokens, ~7 min | with the fixes in place, one edit missed and the error pointed at the right line, and the next two edits landed. The engineer's own `run_check` and the engine's gate both passed. **All 7 tests passed when re-run by hand on the PR branch.** The commit is attributed to Daemon-VI. The Gemini key was skipped before the run ("key rejected") |
+
+Fixes (b1641fd, a6226ff; 205 tests):
+- No PR for an empty branch; the comment then carries the report.
+- The timeline goes to the log, and REPORT/plan to an artifact.
+- Google's 400 bad-key reply is `AuthFailed`, in chat and in `health()`.
+- `add-from-env --test` skips rejected keys, and the Action uses it.
+- `edit_file` lists the lines of repeated matches and takes `line`.
+- The release trigger narrowed to full versions.
+
+**Still open:**
+- The Gemini secret is still wrong. A shape check on a throwaway branch (since deleted) printed
+  only metadata: 63 characters, no `AIza` prefix, contains whitespace. It holds more than the key.
+  So run 3's review was only partly independent: 3 Qwen calls plus 1 fallback to gpt-oss-120b,
+  marked "not independent".
+- The lead's report says "`pytest`… all tests pass"; the check actually ran `unittest`. This is
+  model wording, and the gate result itself is accurate.
+- A runner starts with an empty usage ledger, so "left today" is always the full free limit.
+- Not listed on the Marketplace.
+
 History scan before going public: the only non-generic personal string left in old commits is
 the author's local Windows home path (his first name) in four commits made before the paths were generalised (1c4e843 removed them).
 No other account's name, no email address, and no key appears anywhere.
@@ -143,7 +182,7 @@ No other account's name, no email address, and no key appears anywhere.
 | **D0** open source | built | `LICENSE` (canonical Apache-2.0, sha256 cfc7749b…d30); README rewritten for strangers; `SECURITY.md`, `CONTRIBUTING.md`, templates. `/api/v1` pinned by an OpenAPI snapshot (24 paths, then 24 + `tail`); `serve --allowed-host`; scheduler on Linux (systemd) and macOS (launchd), generated by tested code. `tools/check_licences.py`: 31 runtime deps pass, and 52 with `[mcp]`; certifi is MPL-2.0, allowed by name (ADR-030). `tools/check_history.py`: every commit is the owner identity, no private user name, no key shapes. **CI green on 2026-09-19** (table above) |
 | **D1** packages | built | `tools/wheel_smoke.py`: `cadre_ai-0.1.0-py3-none-any.whl`, 43 files, 135 KiB; installed in a clean venv, `cadre` and `cadre-ai` both work, and the demo run succeeded. `release.yml` (TestPyPI → PyPI by trusted publishing, three-OS PyInstaller builds with a smoke test, GHCR image smoke-tested for uid 10001 and a demo run) **built and smoke-tested on all three OSs by a manual run on 2026-09-19; nothing published**. `cadre-ai` was still free on PyPI on 2026-09-18 |
 | **D2** MCP | built, verified | Six MCP tests. Real stdio (`tools/mcp_smoke.py`): five tools, auto-started server, token in no result. **Claude Code 2.1.276** called `cadre_list_orgs`, `cadre_forecast` and `cadre_usage` from a fixture repo. **Found:** on Windows, the SDK client and Claude Code put stdio servers in a kill-on-close job object, so an auto-started `cadre serve` dies with the session. Breakaway is refused, and escaping via WMI was rejected as evasion-like. The start-run result now says so and points to `cadre resume` (ADR-027) |
-| **D3** Action | built | `action.yml` (composite; engine from the action's own source), `examples/github-action/cadre.yml` (OWNER, MEMBER or COLLABORATOR only; contents, pull-requests and issues write), `provider add-from-env`, `run --result-json`; test of the PR body, parked comment and trigger rules. **The real run on a demo repo is pending**: it needs the workflow scope, the public switch, the demo repo and his secret |
+| **D3** Action | **verified 2026-09-19** | See "D3 on a real repository" below. Built: `action.yml` (composite; engine from the action's own source), `examples/github-action/cadre.yml` (OWNER, MEMBER or COLLABORATOR only; contents, pull-requests and issues write), `provider add-from-env`, `run --result-json`; test of the PR body, parked comment and trigger rules. **The real run on a demo repo is pending**: it needs the workflow scope, the public switch, the demo repo and his secret |
 | **D4** VS Code extension | built, verified in part | `editors/vscode`: no runtime dependencies. `tsc` and `eslint` clean (eslint bans innerHTML and similar), 70 of 70 unit tests, `.vsix` 28.33 KB. **The integration suite passed 4 of 4 inside the installed VS Code** (isolated profile, via `CADRE_VSCODE_EXE`). The `.vsix` installed into his VS Code as `daemon-vi.cadre@0.1.0` and was uninstalled again. The agent's live API smoke test: demo run streamed, dirty tree refused, 7 exec approvals rejected, review-branch diff listed 3 files. **Not observed:** the tree, the webview, the modals and the diff views on screen (no GUI automation here). Not published |
 | **D5** docs site | built | `site/`: nine pages; `build.py` generates them with markdown-it and no framework, pulling the M5/M11 tables from this file at build time. 186 internal links resolve; all pages returned 200 locally; 137,850 bytes. The replay is run `20260917-230536-aa0587` (54 events, 14 calls, 145.76 s) and the scrub check is clean. **Not seen in a browser.** Pages is not enabled, and on a private repo it needs a paid plan |
 | **D6** desktop | skipped | Rithik's decision, 2026-09-18 |
@@ -448,10 +487,10 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 7. **D0 gate:** once CI is green, ask Rithik to confirm making `Daemon-VI/cadre` public (he agreed
    in principle on 2026-09-18). After that, enable Pages (Settings → Pages → GitHub Actions) and
    turn on private vulnerability reporting.
-8. **D3 real test:** create the public `Daemon-VI/cadre-action-demo` (he said yes) with a half-built
-   fixture and `examples/github-action/cadre.yml`. He sets `GROQ_API_KEY` with `gh secret set` in
-   his own terminal. Open a test issue labelled `cadre` and record the PR it opens. Ask before
-   listing the action on the Marketplace.
+8. ~~D3 real test~~: **done 2026-09-19**, PR #2 on `cadre-action-demo` (see "D3 on a real
+   repository"). Left: Rithik re-sets `GEMINI_API_KEY` with only the key (the current secret holds
+   extra text), then run it once more for an independent review. Ask before listing the action on
+   the Marketplace, and before pushing a `v1` tag.
 9. **First publishes:** each needs his yes. PyPI needs a pending publisher on pypi.org (owner
    `Daemon-VI`, repository `cadre`, workflow `release.yml`, environment `pypi`; the same on
    test.pypi.org with environment `testpypi`). The Marketplace and Open VSX need tokens he stores

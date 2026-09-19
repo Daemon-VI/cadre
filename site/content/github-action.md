@@ -9,9 +9,13 @@ Label an issue `cadre`, or comment `/cadre <goal>` on one. Cadre posts a forecas
 `project-finisher` on the checkout, pushes a branch `cadre/<run-id>`, and opens a pull request whose
 body is its report plus a usage table. A human merges it, or doesn't.
 
-> **Status: written, not yet run for real.** The action (`action.yml`) and the example workflow
-> exist, but they have not yet been tested on a real repository, and `Daemon-VI/cadre@v1` needs a
-> `v1` tag that has not been pushed. Until then, treat this page as the design.
+> **Status: tested on a real repository (2026-09-19).** On
+> [`Daemon-VI/cadre-action-demo`](https://github.com/Daemon-VI/cadre-action-demo), a half-finished
+> package with 5 of 7 tests failing, a `/cadre` comment led to
+> [pull request #2](https://github.com/Daemon-VI/cadre-action-demo/pull/2): 18 calls and 34,222
+> tokens on Groq's free tier, about 7 minutes, with all 7 tests passing on the branch. The first two
+> tries failed and exposed four bugs, all now fixed. `Daemon-VI/cadre@v1` needs a `v1` tag that has
+> not been pushed yet, so pin a commit (as the demo does) until it exists.
 
 ## Set it up
 
@@ -81,7 +85,8 @@ and `issues` write permissions and nothing else. More on why in the
 
 1. Installs Cadre from the action's own source, so the action and the engine are the same version.
 2. Registers every free provider whose key is in the environment (`CADRE_NO_KEYRING=1`; there is
-   no keychain on a runner).
+   no keychain on a runner). Each key is checked first, and one the provider rejects is skipped
+   with "skipped gemini: its key was rejected; check the secret" in the log.
 3. Posts the forecast on the issue. Every job starts with an empty usage ledger, so "left today"
    is the providers' full free limits: it can't see what your laptop, or an earlier job, has already
    spent against the same key. A provider that runs out mid-run still parks it correctly.
@@ -89,9 +94,14 @@ and `issues` write permissions and nothing else. More on why in the
    never pasted into a shell line. Gates are approved automatically (`--yes`), and with
    `allow-exec: true` (the default) checks run without asking, because the runner is a throwaway
    machine. The pull request is the human gate.
-5. If the run succeeded or finished unapproved, pushes `cadre/<run-id>` and opens a pull request
-   against the default branch (or `base`). Commits are attributed to the person who asked.
-6. Comments the outcome on the issue, including when the run did not start or failed. A parked run
+5. If the run succeeded or finished unapproved *and made at least one commit*, pushes
+   `cadre/<run-id>` and opens a pull request against the default branch (or `base`). Commits are
+   attributed to the person who asked. Unapproved means a check or reviewer never passed the
+   work: review it with extra care.
+6. Prints the run's whole timeline into the job log (group "Cadre timeline"; GitHub masks secrets
+   there) and keeps `REPORT.md` and `plan.json` as a workflow artifact for 14 days.
+7. Comments the outcome on the issue, including when the run did not start or failed. Without a
+   pull request, the comment carries the report and the usage table itself. A parked run
    comments when it could continue and stops; the action does not resume across jobs yet, so
    re-run it after that time.
 

@@ -43,6 +43,20 @@ observed output, or a dated source.
   no interpreter of its own), and the scheduler job calls `cadre scheduled-run`.
 - README rewritten for people who have never seen Cadre: quick start, measured numbers,
   limitations.
+- `edit_file` takes an optional `line`. When `old` occurs more than once, the error lists the
+  lines where it occurs, and `line` picks one. When `old` matches nothing, the error names the line
+  where its first line is.
+- `provider add-from-env --test` skips a provider whose key is rejected. The Action uses it.
+- `release.yml` fires only on full version tags (`v1.1.0`), never on the Action's `v1`.
+
+### Fixed — found by the first real GitHub Action runs (2026-09-19)
+- Google AI Studio answers a bad key with `400 INVALID_ARGUMENT`, not 401. It was treated as one
+  model refusing one request, so every call tried five Gemini models first. It now disables the
+  provider for the session, and `provider test` reports the key as rejected.
+- The Action tried to open a pull request for a run with no commits and failed. It now skips the
+  pull request, and the issue comment carries the report and the usage table.
+- The Action prints the run's timeline into the job log and keeps `REPORT.md` and `plan.json` as a
+  workflow artifact, so a failed run can be diagnosed after the runner is gone.
 
 ## 1.0.0 — unreleased
 
