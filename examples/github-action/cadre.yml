@@ -6,6 +6,8 @@
 #
 # Secrets: add at least one free key under Settings → Secrets and variables → Actions, for example
 # GROQ_API_KEY (console.groq.com) and GEMINI_API_KEY (aistudio.google.com).
+# Also turn on Settings → Actions → General → "Allow GitHub Actions to create and approve pull
+# requests", or the pull request can't be opened (the branch is still pushed).
 name: Cadre
 
 on:

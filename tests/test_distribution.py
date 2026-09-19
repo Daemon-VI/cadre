@@ -253,6 +253,36 @@ def test_action_formats_outputs_body_and_parked_comment(home, tmp_path):
     assert "${{ inputs.goal }}" not in runs  # the goal reaches shells only through env vars
 
 
+def _github_tag_filter(pattern):
+    """GitHub's tag filter syntax (`*`, `?`, `+`, `[...]`, all else literal) as a full-match regex."""
+    import re
+
+    out, i = "", 0
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "[":
+            j = pattern.index("]", i)
+            out, i = out + pattern[i:j + 1], j + 1
+            continue
+        out += {"*": "[^/]*", "?": "?", "+": "+"}.get(c, re.escape(c))
+        i += 1
+    return re.compile(out)
+
+
+def test_release_fires_only_on_full_versions_not_on_action_major_tags():
+    import yaml
+
+    wf = yaml.safe_load((Path(__file__).parents[1] / ".github" / "workflows" / "release.yml").read_text())
+    patterns = [_github_tag_filter(p) for p in wf[True]["push"]["tags"]]  # YAML 1.1 reads `on` as True
+
+    def fires(tag):
+        return any(p.fullmatch(tag) for p in patterns)
+
+    assert fires("v1.1.0") and fires("v0.1.0") and fires("v1.1.0rc1")
+    # `uses: Daemon-VI/cadre@v1` needs a moving v1 tag; pushing it must never publish anything
+    assert not fires("v1") and not fires("v1.1") and not fires("vscode-v0.1.0")
+
+
 def _tool_at(folder, name):
     import importlib.util
 

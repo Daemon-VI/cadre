@@ -20,7 +20,10 @@ body is its report plus a usage table. A human merges it, or doesn't.
 2. Add at least one free key under **Settings → Secrets and variables → Actions**, for example
    `GROQ_API_KEY` ([console.groq.com](https://console.groq.com/keys)) and `GEMINI_API_KEY`
    ([aistudio.google.com](https://aistudio.google.com/apikey)). `OPENROUTER_API_KEY` works too.
-3. Optionally commit `.cadre/checks.yaml`, so your own tests gate the work:
+3. Turn on **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create
+   and approve pull requests**. Without it, the run still pushes its branch, but opening the pull
+   request fails.
+4. Optionally commit `.cadre/checks.yaml`, so your own tests gate the work:
 
 ```yaml
 checks:

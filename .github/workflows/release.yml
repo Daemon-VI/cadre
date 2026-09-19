@@ -1,11 +1,13 @@
 name: Release
 
-# A `v*` tag publishes: wheel + sdist → TestPyPI → PyPI (trusted publishing, no token),
-# standalone builds for Windows/macOS/Linux → the GitHub Release, and an image → GHCR.
-# `workflow_dispatch` builds and smoke-tests everything without publishing anything.
+# A full version tag (v1.1.0, v1.1.0rc1) publishes: wheel + sdist → TestPyPI → PyPI (trusted
+# publishing, no token), standalone builds for Windows/macOS/Linux → the GitHub Release, and an
+# image → GHCR. The Action's moving major tag (`v1`, for `uses: Daemon-VI/cadre@v1`) and the
+# extension's `vscode-v*` tags never match. `workflow_dispatch` builds and smoke-tests everything
+# without publishing anything.
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
   workflow_dispatch:
 
 permissions:
