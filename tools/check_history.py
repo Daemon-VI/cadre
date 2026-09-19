@@ -18,7 +18,7 @@ OWNER = "Rithik Krishna <317035893+Daemon-VI@users.noreply.github.com>"
 WEB_COMMITTER = "GitHub <noreply@github.com>"
 # The laptop account's user name, written so that this file never matches itself.
 PRIVATE = re.compile(r"m[p]ps[\s_-]*kana[j]iguda", re.IGNORECASE)
-KEYS = re.compile(r"gsk_[A-Za-z0-9]{40,}|AIza[0-9A-Za-z_-]{35}|sk-or-v1-[0-9a-f]{64}")
+KEYS = re.compile(r"gsk_[A-Za-z0-9]{40,}|AIza[0-9A-Za-z_-]{35}|AQ\.[0-9A-Za-z_-]{50}|sk-or-v1-[0-9a-f]{64}")
 
 
 def git(*args: str) -> str:

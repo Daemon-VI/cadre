@@ -166,6 +166,8 @@ def test_history_check_patterns_catch_what_they_guard():
     assert not h.PRIVATE.search("Rithik Krishna")
     assert h.KEYS.search("gsk_" + "A1" * 26) and h.KEYS.search("AIza" + "b" * 35)
     assert not h.KEYS.search("AIza-test-not-a-real-key-000")
+    # Google AI Studio's newer key format (seen 2026-09-19): "AQ." and 50 characters
+    assert h.KEYS.search("AQ." + "Ab8_x-" * 8 + "z9") and not h.KEYS.search("AQ.short")
 
 
 def test_licence_policy_flags_copyleft():
