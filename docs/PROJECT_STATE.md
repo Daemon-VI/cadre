@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (1.0.1 released and `v1` moved to it; M12, the container runner for checks, done on `main` and not released; an MCP approval bypass in 1.0.0/1.0.1 fixed on `main`; next: M13)_
+_Last updated: 2026-09-19 (1.1.0 released: M12 container runner + two security fixes; `v1` still on 1.0.1 until Rithik says to move it; next: M13)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,11 +13,23 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: 1.0.1 released 2026-09-19; M12 done, unreleased
+## Status: 1.1.0 released 2026-09-19 (M12 + security fixes); next M13
 _One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D3, D5; the VS Code
 extension, D4, is built but not published); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
 
-## M12 — container runner for checks — DONE on `main`, 2026-09-19 (`PROMPT_M12.md`)
+## 1.1.0 release (2026-09-19, `PROMPT_M12.md`)
+
+Tag `v1.1.0` on 4be50cd. Release run 35448589292 **green on the first attempt**, all 8 jobs:
+wheel/sdist, three standalone builds, container image, TestPyPI, PyPI, GitHub Release. From a
+clean uv cache and a new `CADRE_HOME`: `cadre 1.1.0`, and a `decision-board --demo` run succeeded
+(needed `uvx --refresh` — PyPI's JSON API lagged the simple index by a few minutes, as with 1.0.1,
+though the simple index had 1.1.0 within ~20 s). SHA-256 identical on PyPI, TestPyPI and the GitHub
+Release: `077a3153…` wheel (154,302 bytes), `5320d3da…` sdist. GHCR `1.1.0`, `1.1` and `latest`
+all return manifest 200 anonymously. **`v1` was NOT moved** — it still points at 1.0.1 (18e4aec);
+moving it to 1.1.0 is a separate decision for Rithik. This release closes, on PyPI, the MCP
+`allow_exec` bypass that 1.0.0 and 1.0.1 carried.
+
+## M12 — container runner for checks — released in 1.1.0, 2026-09-19 (`PROMPT_M12.md`)
 
 FR-22 (AC-22.1…22.9), ADR-031 (with the threat model and what a container does not protect).
 `src/cadre/containers.py` builds `docker run` / `podman run` as an argument list; `CheckSpec` gains
@@ -591,29 +603,30 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 release").
 
 ## Where to pick up
-1. **Next: `ROADMAP.md` M13**, multi-user organisations. M12 (the container runner) is done on
-   `main` but **not released**.
+1. **Next: `ROADMAP.md` M13**, multi-user organisations.
 2. Waiting on Rithik, each his call:
-   - **Release 1.1.0** (M12 + the MCP security fix). The fix closes a hole in the released 1.0.0
-     and 1.0.1: MCP's `cadre_start_run` could set `allow_exec` and skip the exec approval. Tag
-     `v1.1.0` after bumping `pyproject.toml`, `src/cadre/__init__.py` and `uv.lock`, and dating the
-     CHANGELOG's "Unreleased (1.1.0)". Moving `v1` to it is a **separate** yes.
+   - **Move `v1` to 1.1.0** (a separate yes to the release itself). `v1` still points at 1.0.1
+     (18e4aec), so `uses: Daemon-VI/cadre@v1` does not yet run the container runner. It also does
+     not matter for the MCP bypass, which was never in the Action. Move: `git tag -f -a v1
+     v1.1.0^{commit}` then push `--force` for `v1` only, and prove it with one labelled demo issue.
    - **VS Code extension publish**: `gh secret list` shows no secrets, and the `vscode-marketplace`
      environment the publish job uses does not exist yet. He creates the publisher `daemon-vi` on
      the VS Code Marketplace, both tokens, and runs `gh secret set VSCE_PAT` / `gh secret set
-     OVSX_PAT` himself. Then set the extension to 1.0.1 (or 1.1.0 if that ships first), and a
-     `vscode-v<version>` tag publishes both. The Open VSX namespace `daemon-vi` may need creating
-     once (`npx ovsx create-namespace` from a workflow step, never with the token on a command line).
+     OVSX_PAT` himself. Then set the extension to 1.1.0, and a `vscode-v1.1.0` tag publishes both.
+     The Open VSX namespace `daemon-vi` may need creating once (`npx ovsx create-namespace` from a
+     workflow step, never with the token on a command line).
    - **Agent-mode MCP call in VS Code** (needs his Copilot sign-in), and **Antigravity**, which he
      said he has but which was not found on this laptop.
    - Demo PRs #5 and #7 on `cadre-action-demo` are open; merging or closing them is his call.
+   - Consider a short GitHub security advisory for 1.0.0/1.0.1 (the MCP `allow_exec` bypass), now
+     that 1.1.0 fixes it.
 3. Known and not yet fixed: after a Reject, the engine asks for exec approval again on the agent's
    next `run_check`. A runner's usage ledger starts empty, so the Action's "left today" is always
    the full free limit. Containment is proven on Linux only (see "M12").
 4. Done, for the record: keys rotated (a new key goes in with `provider key <id>`, not `provider
    add`); the scheduler job is installed (every 30 min; remove with `cadre scheduler uninstall`);
-   the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0
-   and 1.0.1 releases; M12.
+   the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0,
+   1.0.1 and 1.1.0 releases; M12.
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`

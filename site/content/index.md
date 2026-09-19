@@ -47,7 +47,7 @@ git -C repo log --stat cadre/<run-id>
    delete it.
 
 Installed rather than run through `uvx`: `pipx install cadre-ai` or `uv tool install cadre-ai`,
-then `cadre …`. Version 1.0.1 is on [PyPI](https://pypi.org/project/cadre-ai/).
+then `cadre …`. Version 1.1.0 is on [PyPI](https://pypi.org/project/cadre-ai/).
 
 No key yet? `uvx cadre-ai run decision-board "Should we open a second office?" --demo` runs an
 offline, scripted team. It is plumbing, not intelligence: every answer it writes is marked
@@ -60,11 +60,11 @@ it, so routing, quotas and approvals exist in one place only.
 
 | Front end | Use it when | Status |
 |---|---|---|
-| [Command line](cli.html) | You work in a terminal | 1.0.1 on PyPI (`cadre-ai`) |
+| [Command line](cli.html) | You work in a terminal | 1.1.0 on PyPI (`cadre-ai`) |
 | [AI editors (MCP)](mcp.html) | Claude Code, VS Code, Cursor, Windsurf or Antigravity should start runs | from PyPI: tools called in Claude Code; found by VS Code's MCP client |
 | [GitHub Action](github-action.html) | An issue labelled `cadre` should become a pull request | `uses: Daemon-VI/cadre@v1`; tested on a real repository |
 | [VS Code extension](vscode.html) | You want runs, usage and approvals inside the editor | not yet published |
-| [Containers and downloads](containers.html) | A server, or a machine without Python | 1.0.1 on GHCR and the GitHub Release |
+| [Containers and downloads](containers.html) | A server, or a machine without Python | 1.1.0 on GHCR and the GitHub Release |
 
 ## What makes it different
 
