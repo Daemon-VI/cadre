@@ -33,9 +33,9 @@ the same tag; no new version is needed.
 | GitHub Release | 1.0.0 | github.com/Daemon-VI/cadre/releases/tag/v1.0.0 | 5 assets (wheel, sdist, Windows/macOS-arm64/Linux builds). The Windows zip, downloaded with `gh release download` into a clean folder: `cadre 1.0.0`, and `run decision-board … --demo` succeeded |
 | GHCR | 1.0.0, 1.0, latest, sha-c0073ba | ghcr.io/daemon-vi/cadre | anonymous pull token → manifest 200 for `1.0.0` and `latest` (so the package is public). Not run on this laptop: Docker Desktop was stopped and 0.9 GB RAM was free. The release job's smoke test ran it as uid 10001, `--version`, and a demo run that succeeded |
 | GitHub Action | `v1` → c0073ba | `uses: Daemon-VI/cadre@v1` | `cadre-action-demo` switched to `@v1`; issue #4 (labelled) → run `20260919-101549-2299e0` succeeded → PR #5 (+1 line, a docstring; 19 calls, 33,835 + 1,554 tokens; reviewer used Qwen and gpt-oss) |
-| PyPI / TestPyPI | — | — | **not published**: `invalid-publisher` on TestPyPI (above) |
+| PyPI / TestPyPI | — | — | **not published**: `invalid-publisher` on TestPyPI, again on the re-run at 11:09 UTC after Rithik's "done" (same claims), so the test.pypi.org publisher still doesn't match |
 | VS Code Marketplace / Open VSX | — | — | not published: `VSCE_PAT` and `OVSX_PAT` are not set |
-| GitHub Marketplace | — | — | not listed: needs Rithik to tick the box on the release page (agreement + 2FA) |
+| GitHub Marketplace | v1.0.0 | github.com/marketplace/actions/cadre-finish-this-project | listed by Rithik on the release page (2026-09-19); the page names Daemon-VI/cadre and v1.0.0 |
 
 ### Seen on screen for the first time (2026-09-19)
 
