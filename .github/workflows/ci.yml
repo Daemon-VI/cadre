@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests · ${{ matrix.os }} · py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run pytest -q
+      - run: uv run ruff check src tests
+      - name: Scheduler unit files pass the OS's own checker
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/units"; mkdir -p "$out"
+          uv run python - "$out" <<'EOF'
+          import sys
+          from pathlib import Path
+          from cadre import scheduler
+          out = Path(sys.argv[1])
+          for name, text in scheduler.systemd_units(30).items():
+              (out / name).write_text(text)
+          (out / "cadre.plist").write_text(scheduler.launchd_plist(30))
+          EOF
+          if [ "$RUNNER_OS" = "Linux" ]; then systemd-analyze verify --user "$out/cadre-resume.service" "$out/cadre-resume.timer"; fi
+          if [ "$RUNNER_OS" = "macOS" ]; then plutil -lint "$out/cadre.plist"; fi
+
+  hygiene:
+    name: licences, history, secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+      - name: No copyleft runtime dependency
+        run: uv run --isolated --no-project --with ".[mcp]" --with pip-licenses python tools/check_licences.py
+      - name: Owner identity on every commit, no private names, no key shapes
+        run: python3 tools/check_history.py
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  wheel:
+    name: wheel installs and runs · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+      - run: uv run --no-project python tools/wheel_smoke.py

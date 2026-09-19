@@ -1,0 +1,58 @@
+# The docs site (FR-20): site/content/*.md -> site/_build -> GitHub Pages.
+# Builds with markdown-it-py from the locked environment; never needs Cadre's database or any key
+# (the replay JSON is committed). The owner must first set Settings -> Pages -> Source to
+# "GitHub Actions".
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/**"          # the numbers page includes the M5 and M11 tables from docs/PROJECT_STATE.md
+      - "README.md"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+
+      - name: Build the site
+        run: uv run --locked python site/build.py
+
+      - name: Check every internal link
+        run: uv run --locked python site/check_links.py
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/_build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
