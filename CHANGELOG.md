@@ -3,7 +3,7 @@
 All dates are 2026. Numbers come from `docs/PROJECT_STATE.md`, where each one is traced to a test,
 observed output, or a dated source.
 
-## Unreleased (1.1.0)
+## 1.1.0 — 2026-09-19
 
 ### Added — a container runner for checks (M12, FR-22)
 - A check may say `runner: docker` or `runner: podman` with an `image:` pinned by digest. It then
