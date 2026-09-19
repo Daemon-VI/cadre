@@ -105,6 +105,52 @@ def test_zero_or_many_matches_report_the_count(tmp_path):
     assert ws.read("a.py") == "pass\npass\n"
 
 
+STUBS = ('def top_words(text):\n    """Most common words."""\n    raise NotImplementedError\n\n\n'
+         'def reading_time(text):\n    """Minutes to read."""\n    raise NotImplementedError\n')
+
+
+def test_repeated_text_names_its_lines_and_line_picks_one(tmp_path):
+    # the GitHub Action demo (2026-09-19): two identical stub lines, and the engineer burned its
+    # turns on "matches 2 times" without knowing where the matches were
+    ws = Workspace(tmp_path / "run")
+    ws.write("core.py", STUBS, "eng")
+    with pytest.raises(WorkspaceError, match=r"matches 2 times, at lines 3 and 8.*`line`"):
+        ws.edit("core.py", "    raise NotImplementedError", "    return 0", "eng")
+    ws.edit("core.py", "    raise NotImplementedError", "    return 0", "eng", line=8)
+    second = STUBS.rindex("    raise NotImplementedError")
+    assert ws.read("core.py") == STUBS[:second] + "    return 0\n"
+    ws.edit("core.py", "    raise NotImplementedError", "    return []", "eng", line=2)  # nearest wins
+    assert "raise" not in ws.read("core.py")
+
+
+def test_line_halfway_between_two_matches_is_refused(tmp_path):
+    ws = Workspace(tmp_path / "run")
+    ws.write("a.py", "pass\nx\npass\n", "eng")
+    with pytest.raises(WorkspaceError, match="as near"):
+        ws.edit("a.py", "pass", "return", "eng", line=2)
+    assert ws.read("a.py") == "pass\nx\npass\n"
+
+
+def test_no_match_points_at_where_its_first_line_is(tmp_path):
+    ws = Workspace(tmp_path / "run")
+    ws.write("core.py", STUBS, "eng")
+    # right lines, wrong indentation: say where the first line is so the model can re-read it
+    with pytest.raises(WorkspaceError, match=r"matches 0 times.*first line.*line 6"):
+        ws.edit("core.py", "def reading_time(text):\n  raise NotImplementedError", "x", "eng")
+
+
+async def test_edit_file_tool_passes_line(tmp_path):
+    from types import SimpleNamespace
+
+    ws = Workspace(tmp_path / "run")
+    ws.write("core.py", STUBS, "eng")
+    ctx = SimpleNamespace(workspace=ws, note_file=lambda *a: None)
+    out = await TOOLS["edit_file"].handler(ctx, "eng", "w/0", {
+        "path": "core.py", "old": "    raise NotImplementedError", "new": "    return 0", "line": "8"})
+    assert "edited core.py" in out and ws.read("core.py").count("NotImplementedError") == 1
+    assert "line" in TOOLS["edit_file"].spec.parameters["properties"]
+
+
 def test_crlf_files_accept_plain_newline_edits(tmp_path):
     ws = Workspace(tmp_path / "run")
     (ws.root / "w.txt").write_bytes(b"one\r\ntwo\r\nthree\r\n")

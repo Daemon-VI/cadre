@@ -60,6 +60,13 @@ def test_classify_failures():
     assert isinstance(classify(_resp(400, {"error": {"message": "This model does not support tools"}}), "p"),
                       ToolsUnsupported)
     assert isinstance(classify(_resp(503, {"error": "overloaded"}), "p"), Unavailable)
+    # Google AI Studio reports a bad key as 400 INVALID_ARGUMENT, not 401 (seen live in the GitHub
+    # Action, 2026-09-19): it must disable the provider, not be retried on every model and call
+    for message in ("Please pass a valid API key", "API key not valid. Please pass a valid API key."):
+        gemini_bad_key = _resp(400, {"error": {"code": 400, "message": message, "status": "INVALID_ARGUMENT"}})
+        assert isinstance(classify(gemini_bad_key, "gemini"), AuthFailed)
+    assert isinstance(classify(_resp(400, {"error": {"message": "API_KEY_INVALID"}}), "p"), AuthFailed)
+    assert not isinstance(classify(_resp(400, {"error": {"message": "max_tokens too large"}}), "p"), AuthFailed)
 
 
 async def test_native_tool_call_usage_and_rate_are_parsed():
@@ -113,6 +120,17 @@ async def test_errors_never_contain_the_key():
         await p.chat("m", [Message(role="user", content="hi")])
     await p.aclose()
     assert key not in str(info.value) and "***" in str(info.value)
+
+
+async def test_health_calls_a_gemini_style_400_bad_key_rejected():
+    def handler(request):
+        return httpx.Response(400, json={"error": {"code": 400, "message": "API key not valid. Please pass "
+                                                   "a valid API key.", "status": "INVALID_ARGUMENT"}})
+
+    p = OpenAICompatProvider("gemini", "https://api.example/v1", "k" * 30, transport=httpx.MockTransport(handler))
+    ok, why = await p.health()
+    await p.aclose()
+    assert not ok and "key rejected" in why
 
 
 def test_extract_json_and_replies():

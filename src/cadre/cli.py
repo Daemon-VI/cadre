@@ -168,16 +168,22 @@ def provider_add(
     _complete_provider(h, preset, pc, test)
 
 
-def _complete_provider(h: Home, preset: str, pc, test: bool) -> None:
-    """Test the key, discover models when the preset lists none, and save the provider."""
+def _complete_provider(h: Home, preset: str, pc, test: bool, drop_rejected: bool = False) -> bool:
+    """Test the key, discover models when the preset lists none, and save the provider. With
+    `drop_rejected`, a key the provider rejects is not saved (False is returned)."""
     p = PRESETS[preset]
+    rejected = False
 
     async def finish() -> None:
+        nonlocal rejected
         prov = make_provider(pc, SecretStore())
         try:
             if test:
                 ok, detail = await prov.health()
                 con.print(f"{'[green]OK[/]' if ok else '[red]problem[/]'}: {detail}")
+                rejected = not ok and "key rejected" in detail
+                if rejected and drop_rejected:
+                    return
             if not pc.models:
                 try:
                     names = await prov.list_models()
@@ -191,6 +197,8 @@ def _complete_provider(h: Home, preset: str, pc, test: bool) -> None:
             await prov.aclose()
 
     run_async(finish())
+    if rejected and drop_rejected:
+        return False
     cfg = h.load_config()
     cfg.providers = [x for x in cfg.providers if x.id != pc.id] + [pc]
     h.save_config(cfg)
@@ -200,6 +208,7 @@ def _complete_provider(h: Home, preset: str, pc, test: bool) -> None:
         con.print("Add models with [bold]cadre provider set-model[/].")
     if p.note:
         con.print(f"[dim]{p.note}[/]")
+    return True
 
 
 @provider_app.command("add-from-env")
@@ -221,8 +230,10 @@ def provider_add_from_env(test: bool = typer.Option(False, "--test/--no-test",
             con.print(f"[yellow]skipped {name}:[/] {e}")
             continue
         con.print(f"Using the key for {name} from the environment.")
-        _complete_provider(h, name, pc, test)
-        added.append(name)
+        if _complete_provider(h, name, pc, test, drop_rejected=True):
+            added.append(name)
+        else:
+            con.print(f"[yellow]skipped {name}:[/] its key was rejected; check the secret")
     if not added:
         fail("no provider key found in the environment (e.g. GROQ_API_KEY, GEMINI_API_KEY)")
 

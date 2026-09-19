@@ -183,6 +183,10 @@ def classify(r: httpx.Response, label: str) -> ProviderError:
                            limit=int(value.group(1)) if value and daily else None)
     if r.status_code in (401, 403):
         return AuthFailed(msg)
+    if r.status_code == 400 and ("api_key_invalid" in low or "valid api key" in low
+                                 or "api key not valid" in low):
+        # Google AI Studio answers a bad key with 400 INVALID_ARGUMENT (live in CI, 2026-09-19)
+        return AuthFailed(msg)
     if r.status_code == 413 or "context length" in low or "context_length" in low \
             or "maximum context" in low or "too many tokens" in low:
         return RequestTooLarge(msg)
@@ -423,7 +427,7 @@ class OpenAICompatProvider(LLMProvider):
             r = await self._http().get(f"{self.base_url}/models", timeout=15.0)
         except httpx.HTTPError as e:
             return False, f"unreachable ({type(e).__name__})"
-        if r.status_code in (401, 403):
+        if r.status_code in (401, 403) or isinstance(classify(r, "key check"), AuthFailed):
             return False, REDACTOR.redact(f"key rejected — {r.status_code}: {_err_text(r)}")
         if r.status_code >= 400:
             return True, f"/models answered {r.status_code}; chat may still work"

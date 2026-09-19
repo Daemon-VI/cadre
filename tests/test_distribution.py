@@ -215,6 +215,40 @@ def test_add_from_env_adds_free_providers_only(home, monkeypatch):
     assert "gsk_" not in raw  # the key itself stays in the environment
 
 
+def test_add_from_env_with_test_skips_a_rejected_key(home, monkeypatch):
+    # the Action's first real run (2026-09-19): a bad GEMINI_API_KEY secret was added unchecked, and
+    # then every call tried five Gemini models first
+    import cadre.cli as cli
+    from cadre.presets import PRESETS
+
+    for p in PRESETS.values():
+        if p.env:
+            monkeypatch.delenv(p.env, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_" + "f" * 40)
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza" + "f" * 35)
+
+    class Fake:
+        def __init__(self, pc, secrets):
+            self.id = pc.id
+
+        async def health(self):
+            if self.id == "gemini":
+                return False, "key rejected — 400: API key not valid. Please pass a valid API key."
+            return True, "reachable, key accepted, 3 model(s) listed"
+
+        async def list_models(self):
+            return []
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(cli, "make_provider", Fake)
+    r = CliRunner().invoke(cli.app, ["provider", "add-from-env", "--test"])
+    assert r.exit_code == 0, r.output
+    assert [p.id for p in home.load_config().providers] == ["groq"]
+    assert "skipped gemini" in r.output and "AIza" not in r.output
+
+
 def test_result_json_for_scripts(home, tmp_path):
     from cadre.cli import app
 
@@ -251,6 +285,7 @@ def test_action_formats_outputs_body_and_parked_comment(home, tmp_path):
     action = yaml.safe_load((Path(__file__).parents[1] / "action.yml").read_text(encoding="utf-8"))
     runs = "\n".join(step.get("run", "") for step in action["runs"]["steps"])
     assert "${{ inputs.goal }}" not in runs  # the goal reaches shells only through env vars
+    assert "add-from-env --test" in runs  # a bad secret is caught before the run, not on every call
 
 
 def test_action_opens_no_pr_for_an_empty_branch_and_the_comment_carries_the_report():

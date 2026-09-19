@@ -55,7 +55,11 @@ credential store. `cadre serve` does not hot-reload code.
 Commits are authored and committed as
 `Rithik Krishna <317035893+Daemon-VI@users.noreply.github.com>` (the global identity — don't
 override it). Never add a Claude co-author trailer or "Generated with" line. Branch `main`.
-Remote `origin` = `https://github.com/Daemon-VI/cadre`, **private** (created 2026-09-18). Commit,
-then push `main`. Making it public, and pushing tags, are Rithik's calls — ask first.
+Remote `origin` = `https://github.com/Daemon-VI/cadre`, **public since 2026-09-19** (docs site on
+Pages, private vulnerability reporting on). Commit, then push `main`; CI runs on every push. Pushing
+tags and the first publish to each registry are Rithik's calls — ask first. A full version tag
+(`v1.1.0`) publishes (`release.yml`); the Action's moving `v1` tag does not.
+In Git Bash, an argument starting with `/` (e.g. a `/cadre …` comment body) gets rewritten into a
+Windows path: set `MSYS_NO_PATHCONV=1` or pass it on stdin.
 A plain `git push` hangs here (Git Credential Manager opens a sign-in window); push with gh's login:
 `git -c credential.helper= -c 'credential.helper=!"/c/Program Files/GitHub CLI/gh.exe" auth git-credential' push origin main`.

@@ -75,7 +75,8 @@ async def _read_file(ctx: RunContext, agent: str, step: str, args: dict[str, Any
 
 
 async def _edit_file(ctx: RunContext, agent: str, step: str, args: dict[str, Any]) -> str:
-    info = ctx.workspace.edit(_str(args, "path"), _str(args, "old"), _str(args, "new", ""), agent)
+    info = ctx.workspace.edit(_str(args, "path"), _str(args, "old"), _str(args, "new", ""), agent,
+                              line=_line(args, "line"))
     ctx.note_file(agent, step, str(info["path"]))
     return (f"edited {info['path']} (version {info['version']}): replaced {info['removed_lines']} "
             f"line(s) with {info['added_lines']}")
@@ -129,7 +130,9 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
         "rewriting a whole file.",
         {"path": {"type": "string"},
          "old": {"type": "string", "description": "exact text now in the file; must occur once"},
-         "new": {"type": "string", "description": "replacement text"}},
+         "new": {"type": "string", "description": "replacement text"},
+         "line": {"type": "integer", "description": "only if `old` occurs more than once: the line "
+                  "where the one to replace starts"}},
         ["path", "old", "new"]), _edit_file),
     Tool("write_file", "write", _spec(
         "write_file", "Create or overwrite a text file in the shared workspace. Write the "

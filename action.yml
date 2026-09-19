@@ -67,7 +67,7 @@ runs:
       env:
         CADRE_HOME: ${{ runner.temp }}/cadre-home
         CADRE_NO_KEYRING: "1"
-      run: cadre provider add-from-env --no-test
+      run: cadre provider add-from-env --test  # a rejected key is skipped, not tried on every call
 
     - name: Forecast
       id: forecast

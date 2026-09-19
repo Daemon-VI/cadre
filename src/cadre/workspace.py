@@ -22,6 +22,17 @@ MAX_READ_CHARS = 24_000
 MAX_SEARCH_HITS = 40
 MAX_LISTED = 20_000
 
+
+def _where_first_line_is(text: str, old: str) -> str:
+    """A pointer for an edit whose `old` text is not in the file, usually a whitespace slip."""
+    first = next((ln.strip() for ln in old.splitlines() if ln.strip()), "")
+    hits = [n for n, ln in enumerate(text.splitlines(), 1) if first and ln.strip() == first]
+    if not hits:
+        return "copy it exactly from the file, including indentation"
+    where = ", ".join(map(str, hits[:5]))
+    return (f"its first line is at line {where}; read those lines again and copy them exactly, "
+            "including indentation")
+
 _DEVICE = re.compile(r"^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$", re.I)
 _SKIP_DIRS = {"__pycache__", ".pytest_cache", ".git", "node_modules", ".venv"}
 
@@ -129,8 +140,9 @@ class Workspace:
             raise WorkspaceError(f"{name}: files under {top}/ are the owner's configuration and "
                                  "cannot be changed by agents")
 
-    def edit(self, rel: str, old: str, new: str, agent: str) -> dict[str, object]:
-        """Replace exactly one exact occurrence of `old` (FR-13, ADR-021)."""
+    def edit(self, rel: str, old: str, new: str, agent: str, line: int | None = None) -> dict[str, object]:
+        """Replace exactly one exact occurrence of `old` (FR-13, ADR-021). When `old` occurs more
+        than once, `line` picks the occurrence that starts nearest that line."""
         self._guard(self.resolve(rel)[1])
         if not isinstance(old, str) or not old:
             raise WorkspaceError("`old` must be the exact, non-empty text to replace")
@@ -142,11 +154,29 @@ class Workspace:
             # models echo files with plain newlines; match CRLF files the same way
             old, new = old.replace("\n", "\r\n"), new.replace("\n", "\r\n")
             count = text.count(old)
-        if count != 1:
-            hint = ("copy it exactly from the file, including indentation" if count == 0
-                    else "include more surrounding lines so it matches only once")
-            raise WorkspaceError(f"{name}: `old` matches {count} times; it must match exactly once — {hint}")
-        info = self.write(name, text.replace(old, new, 1), agent)
+        if count == 0:
+            raise WorkspaceError(f"{name}: `old` matches 0 times; it must match exactly once — "
+                                 f"{_where_first_line_is(text, old)}")
+        at = 0
+        if count > 1:
+            # where each match starts, so a model can re-anchor instead of guessing (live, 2026-09-19:
+            # two identical `raise NotImplementedError` stubs cost an engineer all of its turns)
+            starts = [m.start() for m in re.finditer(re.escape(old), text)]
+            lines = [text.count("\n", 0, s) + 1 for s in starts]
+            listed = ", ".join(map(str, lines[:-1])) + f" and {lines[-1]}"
+            if line is None:
+                raise WorkspaceError(f"{name}: `old` matches {count} times, at lines {listed}; it must "
+                                     "match exactly once — pass `line` with the line number of the one "
+                                     "you mean, or include more surrounding lines")
+            dist = sorted((abs(n - line), i) for i, n in enumerate(lines))
+            if len(dist) > 1 and dist[0][0] == dist[1][0]:
+                raise WorkspaceError(f"{name}: line {line} is as near to the match at line "
+                                     f"{lines[dist[0][1]]} as to the one at line {lines[dist[1][1]]}; "
+                                     f"`old` matches at lines {listed}")
+            at = starts[dist[0][1]]
+        else:
+            at = text.index(old)
+        info = self.write(name, text[:at] + new + text[at + len(old):], agent)
         info["removed_lines"] = old.count("\n") + 1
         info["added_lines"] = new.count("\n") + 1 if new else 0
         return info
