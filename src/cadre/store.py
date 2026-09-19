@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS step_results(
     run_id TEXT, path TEXT, text TEXT, data TEXT, ts REAL, PRIMARY KEY(run_id, path));
 CREATE TABLE IF NOT EXISTS usage(
     id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, agent TEXT, provider TEXT, model TEXT,
-    prompt_tokens INTEGER, completion_tokens INTEGER, ts REAL);
+    prompt_tokens INTEGER, completion_tokens INTEGER, ts REAL, memory_tokens INTEGER DEFAULT 0);
 CREATE INDEX IF NOT EXISTS usage_run ON usage(run_id);
 CREATE TABLE IF NOT EXISTS quota_daily(
     key TEXT, day TEXT, requests INTEGER, tokens INTEGER, PRIMARY KEY(key, day));
@@ -64,7 +64,9 @@ RUN_COLUMNS = {"project_path": "TEXT", "base": "TEXT", "branch": "TEXT", "resume
                "active_seconds": "REAL DEFAULT 0", "privacy": "TEXT",
                # M13: the user and team the run belongs to (NULL for pre-accounts or personal runs)
                "owner_user": "TEXT", "owner_team": "TEXT"}
-SCHEMA_VERSION = 4
+#: columns added to existing tables after v1.0 (nullable/defaulted, so old rows keep working)
+USAGE_COLUMNS = {"memory_tokens": "INTEGER DEFAULT 0"}  # M14: memory tokens carried by the call
+SCHEMA_VERSION = 5
 
 ACTIVE = ("queued", "running", "waiting")
 STALE_AFTER = 90.0  # seconds without a heartbeat before an active run counts as interrupted
@@ -99,6 +101,10 @@ class Store:
         for name, decl in RUN_COLUMNS.items():
             if name not in cols:
                 self._db.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")
+        ucols = {r[1] for r in self._db.execute("PRAGMA table_info(usage)")}
+        for name, decl in USAGE_COLUMNS.items():
+            if name not in ucols:
+                self._db.execute(f"ALTER TABLE usage ADD COLUMN {name} {decl}")
         if version < SCHEMA_VERSION:
             self._db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
@@ -234,22 +240,24 @@ class Store:
 
     # ------------------------------------------------------------------ usage
     def add_usage(self, rid: str, agent: str, provider: str, model: str, prompt: int,
-                  completion: int) -> None:
+                  completion: int, memory: int = 0) -> None:
         self._x("INSERT INTO usage(run_id, agent, provider, model, prompt_tokens, "
-                "completion_tokens, ts) VALUES(?,?,?,?,?,?,?)",
-                (rid, agent, provider, model, prompt, completion, time.time()))
+                "completion_tokens, ts, memory_tokens) VALUES(?,?,?,?,?,?,?,?)",
+                (rid, agent, provider, model, prompt, completion, time.time(), memory))
 
     def usage_by_agent(self, rid: str) -> list[dict[str, Any]]:
         return self._all(
             "SELECT agent, provider, model, COUNT(*) AS calls, SUM(prompt_tokens) AS prompt_tokens, "
-            "SUM(completion_tokens) AS completion_tokens FROM usage WHERE run_id=? "
-            "GROUP BY agent, provider, model ORDER BY agent", (rid,))
+            "SUM(completion_tokens) AS completion_tokens, SUM(memory_tokens) AS memory_tokens "
+            "FROM usage WHERE run_id=? GROUP BY agent, provider, model ORDER BY agent", (rid,))
 
     def usage_totals(self, rid: str) -> dict[str, int]:
         row = self._one("SELECT COUNT(*) AS calls, COALESCE(SUM(prompt_tokens),0) AS p, "
-                        "COALESCE(SUM(completion_tokens),0) AS c FROM usage WHERE run_id=?", (rid,))
-        row = row or {"calls": 0, "p": 0, "c": 0}
-        return {"calls": row["calls"], "prompt_tokens": row["p"], "completion_tokens": row["c"]}
+                        "COALESCE(SUM(completion_tokens),0) AS c, "
+                        "COALESCE(SUM(memory_tokens),0) AS m FROM usage WHERE run_id=?", (rid,))
+        row = row or {"calls": 0, "p": 0, "c": 0, "m": 0}
+        return {"calls": row["calls"], "prompt_tokens": row["p"], "completion_tokens": row["c"],
+                "memory_tokens": row["m"]}
 
     # ------------------------------------------------------------------ quota
     def quota_load(self, key: str, day: str) -> tuple[int, int]:
@@ -307,8 +315,9 @@ class Store:
         return self._all(sql + " ORDER BY created", args)
 
     def cancel_pending_approvals(self, rid: str) -> None:
+        # memory proposals (M14) outlive the run that raised them — a human approves them later
         self._x("UPDATE approvals SET status='cancelled', decided=? "
-                "WHERE run_id=? AND status='pending'", (time.time(), rid))
+                "WHERE run_id=? AND status='pending' AND kind != 'memory'", (time.time(), rid))
 
     # ------------------------------------------------------------------ files
     def add_file(self, rid: str, path: str, version: int, sha: str, size: int, agent: str) -> None:

@@ -43,6 +43,7 @@ PAGES = [
     ("github-action", "GitHub Action", "Set up"),
     ("vscode", "VS Code extension", "Set up"),
     ("containers", "Containers and downloads", "Set up"),
+    ("memory", "Memory across runs", "Set up"),
     ("security", "Security model", "Trust"),
     ("numbers", "Measured numbers", "Trust"),
     ("replay", "Replay of a real run", "Trust"),

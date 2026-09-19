@@ -34,8 +34,8 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | capstone done 2026-09-18 (both succeeded); release pending the definition-of-done items in PROJECT_STATE |
 | **M12** | Container runner for checks | FR-22 · ADR-031 | done 2026-09-19; **released in 1.1.0** (containment tested in Linux CI under Docker and Podman; one check run in Docker Desktop on the laptop) |
 | **M13** | Multi-user organisations | FR-23 · ADR-032/033/034 | **done 2026-09-19** except OIDC: users, roles, hashed tokens, RBAC, audit (phase 1); teams, per-team budgets and model allowances, action routing (phase 2). OIDC SSO deferred to M13.1, a prerequisite of M16 |
-| M14 | Memory across runs | — | **next** |
-| M15 | Web research tool | — | after v1.0 |
+| M14 | Memory across runs | FR-24 · ADR-036 | **done 2026-09-19** (files, deterministic selection under a cap, `memory` approval, retrospective, privacy, ledger + forecast; unreleased). Live n=1 showed no benefit on a task the model already got right — recorded plainly |
+| M15 | Web research tool | — | **next** |
 | M16 | Hosted deployment | — | after v1.0 |
 
 **Deviation, recorded 2026-09-17.** M5 is blocked, not skipped. The Groq key was copied into
@@ -108,8 +108,12 @@ role, independence, check results, repairs and 429s. Then `claim-auditor`, versi
 - **M13.1 — OIDC SSO.** Deferred: it needs a real identity provider and can't be tested offline.
   Now a prerequisite of **M16 (hosting)** — single sign-on only matters once Cadre is hosted, so
   it is built when M16 is.
-- **M14 — memory across runs.** Per-org knowledge files injected under a hard cap; files before
-  a vector database, because every token of memory is replayed on every call.
+- **M14 — memory across runs. Done 2026-09-19** (FR-24, ADR-036). Markdown knowledge files under
+  `CADRE_HOME/memory/` at global/team/project scope (project keyed by root commit), injected into
+  builders and managers under a hard per-call token cap; deterministic selection (no embeddings);
+  human + model-proposed entries behind a `memory` approval that cannot be granted over MCP; every
+  entry passes the `check_history` key scan; memory tokens shown in the ledger and forecast. Files
+  before a vector database, because every token of memory is replayed on every call. Unreleased.
 - **M15 — web research tool.** `fetch_url` / `search` with fetched text treated strictly as
   data, domain allow lists and size caps.
 - **M16 — hosted deployment.** Dockerfile, optional Postgres, TLS guidance, M13's auth in front

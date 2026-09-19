@@ -45,7 +45,8 @@ def test_v01_database_opens_and_keeps_rows(tmp_path):
     assert run["goal"] == "old goal" and run["status"] == "succeeded"
     assert run["project_path"] is None and run["active_seconds"] == 0 and run["privacy"] is None
     assert store.quota_load("groq/m", "2026-09-16") == (12, 3400)
-    assert store.usage_totals("r1") == {"calls": 1, "prompt_tokens": 100, "completion_tokens": 20}
+    assert store.usage_totals("r1") == {"calls": 1, "prompt_tokens": 100, "completion_tokens": 20,
+                                        "memory_tokens": 0}
     store.update_run("r1", resume_at=123.0, branch="cadre/r1")
     assert store.get_run("r1")["branch"] == "cadre/r1"
     store.close()

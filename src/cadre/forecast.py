@@ -106,6 +106,8 @@ class Estimate:
     largest_call: int
     basis: str
     per_step: list[str] = field(default_factory=list)
+    #: estimated memory tokens carried across the run (FR-24); 0 when memory is empty or off
+    memory_tokens: int = 0
 
 
 def measured(store: Store, org_name: str) -> list[dict[str, Any]]:
@@ -145,11 +147,13 @@ def project_text_tokens(root: str | Path) -> int:
 
 
 def from_template(org: OrgSpec, goal: str, largest_call: int,
-                  read_context: int | None = None) -> Estimate:
+                  read_context: int | None = None, mem_per_call: int = 0) -> Estimate:
     """Calls and tokens implied by the workflow tree (no history). Assumptions are stated in ADR-019:
     an agent with tools takes 3 calls (act, act, answer), without tools 1; a strict-JSON answer
-    needs a repair turn one time in four; review loops need 2 rounds typically, all rounds at p90."""
+    needs a repair turn one time in four; review loops need 2 rounds typically, all rounds at p90.
+    `mem_per_call` is the memory block size added to each builder/manager/worker call (FR-24)."""
     lines: list[str] = []
+    mem = [0.0]  # memory tokens accumulated across memory-receiving calls (p50 basis)
     context = READ_CONTEXT if read_context is None else max(READ_CONTEXT_MIN, min(READ_CONTEXT, read_context))
     if read_context is not None:
         lines.append(f"project text ~{read_context:,} tokens (readers assumed to carry {context:,})")
@@ -160,11 +164,14 @@ def from_template(org: OrgSpec, goal: str, largest_call: int,
 
     def walk(step, depth: int = 0) -> tuple[float, float, float, float]:
         """(calls, calls_p90, tokens, tokens_p90)"""
-        def cost(a: AgentSpec, calls: float, calls_p90: float, task: str = ""):
+        def cost(a: AgentSpec, calls: float, calls_p90: float, task: str = "", memory: bool = False):
             base = _agent_call_tokens(org, a, goal, task)
             reads = bool(READ_TOOLS.intersection(a.tools))
             writes = bool(WRITE_TOOLS.intersection(a.tools))
-            per = (base * IN_GROWTH + (context if reads else 0)
+            mem_here = mem_per_call if memory else 0
+            if mem_here:
+                mem[0] += calls * mem_here
+            per = (base * IN_GROWTH + mem_here + (context if reads else 0)
                    + (OUT_WRITER if writes else OUT_READER if reads else OUT_OTHER))
             return calls, calls_p90, calls * per, calls_p90 * per
 
@@ -180,7 +187,7 @@ def from_template(org: OrgSpec, goal: str, largest_call: int,
                 return tuple(tot)  # type: ignore[return-value]
             case ReviewLoopStep():
                 b = org.agent(step.builder)
-                one = list(cost(b, agent_calls(b), agent_calls(b), step.task))
+                one = list(cost(b, agent_calls(b), agent_calls(b), step.task, memory=True))
                 for r in step.reviewers:
                     ra = org.agent(r)
                     rc = (2.0 if ra.tools else 1.0) + 0.25
@@ -206,10 +213,11 @@ def from_template(org: OrgSpec, goal: str, largest_call: int,
                 mgr = org.agent(step.manager)
                 # live runs planned 1 task for one worker and 4 for four (2026-09-17)
                 tasks = min(step.max_tasks, max(1, len(step.workers)))
-                tot = list(cost(mgr, 2.25, 2.5))  # plan (+repair) and integration
+                tot = list(cost(mgr, 2.25, 2.5, memory=True))  # plan (+repair) and integration
                 worker_calls = sum(agent_calls(org.agent(w)) for w in step.workers) / len(step.workers)
                 w0 = org.agent(step.workers[0])
-                for i, v in enumerate(cost(w0, worker_calls * tasks, (worker_calls + 2) * step.max_tasks)):
+                for i, v in enumerate(cost(w0, worker_calls * tasks, (worker_calls + 2) * step.max_tasks,
+                                           memory=True)):
                     tot[i] += v
                 if step.reviewer:
                     ra = org.agent(step.reviewer)
@@ -224,8 +232,12 @@ def from_template(org: OrgSpec, goal: str, largest_call: int,
                 return cost(a, agent_calls(a), agent_calls(a) + 1, step.task)
 
     calls, calls_p90, tokens, tokens_p90 = walk(org.workflow)
+    if mem[0] > 0:
+        lines.append(f"memory ~{mem_per_call:,} tokens/call to builders and managers "
+                     f"(~{round(mem[0]):,} tokens total)")
     return Estimate(round(calls, 1), round(calls_p90, 1), round(tokens), round(tokens_p90), None, 0,
-                    largest_call, "no history, estimated from template size", lines)
+                    largest_call, "no history, estimated from template size", lines,
+                    memory_tokens=round(mem[0]))
 
 
 def largest_call(org: OrgSpec, goal: str) -> int:
@@ -233,12 +245,14 @@ def largest_call(org: OrgSpec, goal: str) -> int:
     return max(_agent_call_tokens(org, a, goal) + a.max_output_tokens for a in org.agents)
 
 
-def estimate(store: Store, org: OrgSpec, goal: str, project: str | Path | None = None) -> Estimate:
+def estimate(store: Store, org: OrgSpec, goal: str, project: str | Path | None = None,
+             mem_per_call: int = 0) -> Estimate:
     big = largest_call(org, goal)
     hist = measured(store, org.name)
     if not hist:
         return from_template(org, goal, big,
-                             project_text_tokens(project) if project else None)
+                             project_text_tokens(project) if project else None,
+                             mem_per_call=mem_per_call)
     calls = [r["calls"] for r in hist]
     tokens = [r["prompt_tokens"] + r["completion_tokens"] for r in hist]
     mins = [r["active_seconds"] / 60 for r in hist if r.get("active_seconds")]

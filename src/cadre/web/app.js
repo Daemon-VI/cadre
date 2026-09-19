@@ -98,7 +98,7 @@ function route() {
   const [, view, arg] = (location.hash || "#/runs").split("/");
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === (view === "run" ? "runs" : view)));
   if (!token()) return showLogin();
-  const views = { runs: viewRuns, run: () => viewRun(arg), new: () => viewNew(arg), orgs: viewOrgs, providers: viewProviders, usage: viewUsage, approvals: viewApprovals };
+  const views = { runs: viewRuns, run: () => viewRun(arg), new: () => viewNew(arg), orgs: viewOrgs, providers: viewProviders, usage: viewUsage, memory: viewMemory, approvals: viewApprovals };
   (views[view] || viewRuns)();
   $main().focus({ preventScroll: true });
 }
@@ -229,7 +229,7 @@ function approvalBox(d) {
     } catch (err) { toast(err.message); }
   };
   const box = h("div", { class: "stack" },
-    h("div", {}, h("b", { text: d.kind === "exec" ? "Allow code execution?" : d.kind === "question" ? "An agent asks:" : "Approval needed:" })),
+    h("div", {}, h("b", { text: d.kind === "exec" ? "Allow code execution?" : d.kind === "question" ? "An agent asks:" : d.kind === "memory" ? "Remember this fact?" : "Approval needed:" })),
     h("pre", { text: d.prompt }),
     answer,
     h("div", { class: "row" },
@@ -603,6 +603,69 @@ function viewUsage() {
       out));
   load().catch((e) => toast(e.message));
   const t = setInterval(() => load().catch(() => {}), 10000);
+  stopView = () => clearInterval(t);
+}
+
+// ---------------------------------------------------------------- memory (M14)
+function viewMemory() {
+  const scope = h("input", { type: "text", id: "mem-scope", placeholder: "global", value: "global" });
+  const text = h("input", { type: "text", id: "mem-text", placeholder: "One durable fact (<= 400 chars)" });
+  const body = h("tbody");
+  const empty = h("p", { class: "muted hidden", text: "No memory yet. Add a fact, or a run's retrospective can propose one." });
+  const add = h("button", { class: "primary", onclick: async () => {
+    if (!text.value.trim()) return;
+    try {
+      await api("/api/v1/memory", { method: "POST", body: { scope: scope.value.trim() || "global", text: text.value.trim() } });
+      text.value = ""; load().catch((e) => toast(e.message));
+    } catch (err) { toast(err.message); }
+  } }, "Remember");
+  const decide = async (id, approve) => {
+    try { await api(`/api/v1/approvals/${id}`, { method: "POST", body: { approve } }); refreshBadge(); load(); }
+    catch (err) { toast(err.message); }
+  };
+  const remove = async (id) => {
+    try { await api(`/api/v1/memory/${id}`, { method: "DELETE" }); load(); }
+    catch (err) { toast(err.message); }
+  };
+  const load = async () => {
+    const [data, pending] = await Promise.all([
+      api("/api/v1/memory?pending=true"),
+      api("/api/v1/approvals?pending=true"),
+    ]);
+    const memApprovals = {};
+    for (const a of pending) if (a.kind === "memory" && a.prompt) memApprovals[a.prompt.trim()] = a.id;
+    const entries = data.entries || [];
+    empty.classList.toggle("hidden", entries.length > 0);
+    put(body, ...entries.map((e) => {
+      const aid = e.approved ? null : memApprovals[e.text.trim()];
+      const actions = e.approved
+        ? [h("button", { class: "danger small", onclick: () => remove(e.id) }, "Delete")]
+        : (aid ? [h("button", { class: "primary small", onclick: () => decide(aid, true) }, "Approve"),
+                  h("button", { class: "danger small", onclick: () => decide(aid, false) }, "Reject")]
+               : [h("span", { class: "muted small", text: "pending" })]);
+      return h("tr", {},
+        h("td", { class: "mono small", text: e.id }),
+        h("td", { class: "small", text: e.scope }),
+        h("td", {}, e.approved ? h("span", { class: "small", text: "approved" }) : h("span", { class: "badge", text: "proposed" })),
+        h("td", { text: e.text }),
+        h("td", { class: "small", text: (e.tags || []).join(", ") }),
+        h("td", { class: "row" }, ...actions));
+    }));
+    for (const b of (data.skipped || [])) toast(`skipped: ${b}`);
+  };
+  mount(
+    h("h1", { text: "Memory" }),
+    h("p", { class: "sub", text: "Facts remembered across runs, replayed to builders and managers as data — never as instructions. Reviewers and voters get none." }),
+    h("div", { class: "panel stack" },
+      h("h3", { text: "Add a fact" }),
+      h("div", { class: "row" }, h("label", { class: "row" }, "Scope ", scope), text, add),
+      h("p", { class: "hint", text: "Scope: global, team:<id>, or project:<root-commit>." })),
+    h("div", { class: "panel" },
+      h("div", { class: "table-wrap" }, h("table", {},
+        h("thead", {}, h("tr", {}, ...["Id", "Scope", "Status", "Fact", "Tags", ""].map((x) => h("th", { text: x })))),
+        body)), empty));
+  load().catch((e) => toast(e.message));
+  const t = setInterval(() => load().catch(() => {}), 8000);
   stopView = () => clearInterval(t);
 }
 

@@ -116,7 +116,8 @@ def _missing(ctx: RunContext, names: list[str]) -> list[str]:
 
 async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
                     context: str = "", avoid: tuple[str, ...] = (),
-                    tools: list[str] | None = None, json_reply: str | None = None) -> AgentResult:
+                    tools: list[str] | None = None, json_reply: str | None = None,
+                    memory_tokens: int = 0) -> AgentResult:
     allowed = list(agent.tools if tools is None else tools)
     specs = specs_for(allowed, ctx)
     messages = [Message(role="system", content=system_prompt(ctx, agent, json_reply)),
@@ -137,7 +138,8 @@ async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
             result.families.append(call.entry.family)
 
     for turn in range(1, agent.max_turns + 1):
-        call = await ctx.call(agent, messages, specs, step, avoid, prefer=result.model or None)
+        call = await ctx.call(agent, messages, specs, step, avoid, prefer=result.model or None,
+                              memory_tokens=memory_tokens)
         resp = call.response
         result.turns = turn
         note_model(call)
@@ -188,7 +190,7 @@ async def run_agent(ctx: RunContext, agent: AgentSpec, task: str, *, step: str,
     messages.append(Message(role="user", content=(
         "You have used all your turns. Reply now with your final answer"
         + (" as the JSON object" if json_reply else "") + ", without calling any tool.")))
-    call = await ctx.call(agent, messages, [], step, avoid)
+    call = await ctx.call(agent, messages, [], step, avoid, memory_tokens=memory_tokens)
     note_model(call)
     result.text = call.response.content.strip()
     result.incomplete = True

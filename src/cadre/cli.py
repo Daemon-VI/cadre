@@ -36,6 +36,7 @@ from .config import (
 )
 from .engine import CONTAINER_ONLY, RunOptions
 from .forecast import estimate, forecast, usage_ledger
+from .memory import MemoryRefused, MemoryStore
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
 from .project import ProjectError
@@ -60,6 +61,8 @@ scheduler_app = typer.Typer(help="Resume parked runs on a schedule (asks before 
 user_app = typer.Typer(help="Users and their roles (M13). Run locally, as the owner.",
                        no_args_is_help=True)
 token_app = typer.Typer(help="API tokens for users.", no_args_is_help=True)
+memory_app = typer.Typer(help="Memory across runs (M14): facts remembered and replayed as data.",
+                         no_args_is_help=True)
 team_app = typer.Typer(help="Teams, their members, budgets and model allowances (M13).",
                        no_args_is_help=True)
 
@@ -83,6 +86,7 @@ app.add_typer(scheduler_app, name="scheduler")
 app.add_typer(user_app, name="user")
 app.add_typer(token_app, name="token")
 app.add_typer(team_app, name="team")
+app.add_typer(memory_app, name="memory")
 con = Console(highlight=False)
 
 
@@ -617,7 +621,8 @@ def _terminal_approver(no_input: bool):
         if no_input:
             raise typer.Exit(2)
         con.print()
-        title = {"exec": "Run code?", "question": f"{agent} asks", "gate": "Approval needed"}[kind]
+        title = {"exec": "Run code?", "question": f"{agent} asks", "gate": "Approval needed",
+                 "memory": "Remember this?"}.get(kind, "Approval needed")
         con.print(f"[bold yellow]{title}[/]\n{prompt}", markup=True)
         if kind == "question":
             answer = await asyncio.to_thread(typer.prompt, "Your answer", default="")
@@ -885,9 +890,17 @@ def approvals() -> None:
 def approve(approval_id: str, reject: bool = typer.Option(False, "--reject"),
             answer: str = typer.Option("", "--answer", "-a")) -> None:
     """Approve (or --reject) a pending approval; --answer replies to a question."""
-    store = Store(home().db_path)
+    h = home()
+    store = Store(h.db_path)
+    ap = store.get_approval(approval_id)
     if not store.decide(approval_id, not reject, answer):
         fail("no pending approval with that id")
+    if ap and ap.get("kind") == "memory":  # apply the memory proposal to its file (FR-24)
+        from .memory import MemoryStore
+        entry = MemoryStore(h.memory_dir).finalize(approval_id, not reject, "owner")
+        if entry and not reject:
+            con.print(f"remembered [dim]{entry.id}[/] in [bold]{entry.scope}[/]")
+            return
     con.print("rejected" if reject else "approved")
 
 
@@ -1222,3 +1235,65 @@ def team_allow(
         fail(str(e))
     allowed = _accounts().team(team)["allow"]
     con.print(f"{team} may use: [bold]{', '.join(allowed) or 'all models'}[/].")
+
+
+# --------------------------------------------------------------------------- memory (M14)
+def _memory() -> MemoryStore:
+    return MemoryStore(home().memory_dir)
+
+
+@memory_app.command("add")
+def memory_add(text: str = typer.Argument(..., help="the fact, one sentence, <= 400 chars"),
+               scope: str = typer.Option("global", "--scope",
+                                         help="global | team:<id> | project:<root-commit>"),
+               tags: str = typer.Option("", "--tags", help="comma-separated"),
+               pin: bool = typer.Option(False, "--pin", help="always offered first"),
+               private: bool = typer.Option(False, "--private",
+                                            help="only sent to providers that do not train on prompts")) -> None:
+    """Remember a fact. It is offered to builders and managers on later runs, as data."""
+    tag_tuple = tuple(t.strip() for t in tags.split(",") if t.strip())
+    try:
+        e = _memory().add(scope, text, by="owner", tags=tag_tuple, pinned=pin, private=private)
+    except (MemoryRefused, ValueError) as ex:
+        fail(str(ex))
+    con.print(f"remembered [dim]{e.id}[/] in [bold]{e.scope}[/].")
+
+
+@memory_app.command("list")
+def memory_list(scope: str = typer.Option("", "--scope", help="only this scope"),
+                pending: bool = typer.Option(True, "--pending/--no-pending",
+                                             help="include proposals awaiting approval")) -> None:
+    """List remembered facts (and, by default, proposals awaiting approval)."""
+    scopes = [scope] if scope else None
+    entries, bad = _memory().entries(scopes, include_pending=pending)
+    if not entries and not bad:
+        con.print("No memory yet. Add one with `cadre memory add \"…\"`.")
+        return
+    t = Table()
+    for col in ("id", "scope", "status", "fact", "tags"):
+        t.add_column(col, overflow="fold")
+    for e in entries:
+        status = "approved" if e.approved else "[yellow]pending[/]"
+        flags = " ".join(f for f, on in (("📌", e.pinned), ("private", e.private)) if on)
+        t.add_row(e.id, e.scope, status, e.text + (f"  [dim]{flags}[/]" if flags else ""),
+                  ", ".join(e.tags))
+    con.print(t)
+    for b in bad:
+        con.print(f"[red]skipped[/] {b}")
+
+
+@memory_app.command("show")
+def memory_show(entry_id: str = typer.Argument(...)) -> None:
+    """Show one memory entry with all its metadata."""
+    e = _memory().get(entry_id)
+    if e is None:
+        fail("no such memory entry")
+    con.print_json(data=e.as_dict())
+
+
+@memory_app.command("rm")
+def memory_rm(entry_id: str = typer.Argument(...)) -> None:
+    """Delete a memory entry."""
+    if not _memory().remove(entry_id):
+        fail("no such memory entry")
+    con.print(f"removed {entry_id}.")

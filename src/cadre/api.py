@@ -39,6 +39,7 @@ from .config import (
 )
 from .engine import RunOptions
 from .forecast import estimate, forecast, usage_ledger
+from .memory import MemoryRefused
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
 from .providers import ProviderError
@@ -97,6 +98,14 @@ class ForecastIn(BaseModel):
 class DecisionIn(BaseModel):
     approve: bool
     answer: str = ""
+
+
+class MemoryIn(BaseModel):
+    scope: str = "global"          # "global", "team:<id>" or "project:<root-commit>"
+    text: str
+    tags: list[str] = Field(default_factory=list)
+    pinned: bool = False
+    private: bool = False
 
 
 HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
@@ -553,6 +562,8 @@ def create_app(manager: RunManager, *, token: str | None = None,
             raise HTTPException(403, "this approval belongs to another user or team")
         if not store.decide(aid, body.approve, body.answer):
             raise HTTPException(409, "already decided")
+        if approval.get("kind") == "memory":  # apply the proposal to its file (FR-24)
+            manager.apply_memory_decision(aid, body.approve, user.id)
         manager.accounts.audit(user, "approval.decided", aid,
                                {"run": approval.get("run_id"), "kind": approval.get("kind"),
                                 "approved": body.approve})
@@ -574,6 +585,31 @@ def create_app(manager: RunManager, *, token: str | None = None,
     @api.get("/audit", dependencies=admin_secured)
     async def audit(limit: int = 100) -> list[dict[str, Any]]:
         return manager.accounts.audit_log(min(max(limit, 1), 1000))
+
+    # ------------------------------------------------------------------ memory (M14)
+    @api.get("/memory", dependencies=secured)
+    async def memory_list(scope: str | None = None, pending: bool = True) -> dict[str, Any]:
+        scopes = [scope] if scope else None
+        entries, bad = manager.memory.entries(scopes, include_pending=pending)
+        return {"entries": [e.as_dict() for e in entries], "skipped": bad,
+                "scopes": manager.memory.scopes()}
+
+    @api.post("/memory", dependencies=run_secured)
+    async def memory_add(body: MemoryIn, user: User = Depends(auth)) -> dict[str, Any]:
+        try:
+            e = manager.memory.add(body.scope, body.text, by=user.id, tags=tuple(body.tags),
+                                   pinned=body.pinned, private=body.private)
+        except (MemoryRefused, ValueError) as ex:
+            raise HTTPException(422, str(ex)) from None
+        manager.accounts.audit(user, "memory.added", e.id, {"scope": e.scope})
+        return e.as_dict()
+
+    @api.delete("/memory/{entry_id}", dependencies=run_secured)
+    async def memory_rm(entry_id: str, user: User = Depends(auth)) -> dict[str, Any]:
+        if not manager.memory.remove(entry_id):
+            raise HTTPException(404, "no such memory entry")
+        manager.accounts.audit(user, "memory.removed", entry_id, {})
+        return {"id": entry_id, "removed": True}
 
     app.include_router(api, prefix="/api/v1")
     app.include_router(api, prefix="/api", include_in_schema=False)

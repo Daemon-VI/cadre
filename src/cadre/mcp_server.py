@@ -1,9 +1,10 @@
 """`cadre mcp`: Cadre inside AI editors, as an MCP server over stdio (FR-17, ADR-027).
 
 A thin client of the local API (ADR-024): it finds `cadre serve` on 127.0.0.1, starts it detached
-when nothing answers (so a run outlives the editor), and calls `/api/v1`. Five tools, because every
+when nothing answers (so a run outlives the editor), and calls `/api/v1`. Six tools, because every
 schema is replayed in the host's context on every turn. **No approval of any kind can be granted
-from here**: the caller is itself a model, and a gate a model can open is not a gate. A waiting run
+from here** (including a memory proposal): the caller is itself a model, and a gate a model can open
+is not a gate. `cadre_memory_list` is read-only. A waiting run
 says to use `cadre approve <id>` or the dashboard. The API token is read from `CADRE_HOME/token` when
 a request is made and never appears in a tool result. Nothing may print to stdout: it carries the
 protocol.
@@ -263,6 +264,18 @@ def build_server(home: Home, port: int | None = None, api: Api | None = None) ->
                     "day_requests": q.get("day_requests"), "resets_in_s": q.get("resets_in_s")}
                    for q in quota if q.get("cooldown_s") or q.get("headroom", 1) <= 0]
         return {"ledger": ledger, "blocked_now": blocked}
+
+    @mcp.tool()
+    async def cadre_memory_list(scope: str | None = None) -> dict[str, Any]:
+        """List the facts Cadre remembers across runs (FR-24), optionally for one scope
+        ("global", "team:<id>", "project:<root-commit>"). Read-only: memory is written and its
+        proposals approved by the user, never here — a memory proposal, like any approval, cannot
+        be approved over MCP (ADR-027)."""
+        params = {"scope": scope} if scope else None
+        data = await api.call("GET", "/memory", params=params)
+        return {"entries": [{k: e.get(k) for k in ("id", "scope", "text", "tags", "approved")}
+                            for e in data.get("entries", [])],
+                "scopes": data.get("scopes", []), "skipped": data.get("skipped", [])}
 
     mcp._cadre_api = api  # type: ignore[attr-defined]  # tests stub its calls
     return mcp

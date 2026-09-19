@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from . import containers
 from .agent import AgentResult, ask_json, run_agent, schema_text
 from .clocks import DayClock, human
+from .memory import RunMemory
 from .org import (
     AgentSpec,
     ApprovalStep,
@@ -161,7 +162,8 @@ class RunContext:
     def __init__(self, run_id: str, org: OrgSpec, goal: str, store: Store, router: Router,
                  run_dir: Path, options: RunOptions | None = None,
                  approver: Approver | None = None, poll: float = 0.5,
-                 project: dict[str, Any] | None = None):
+                 project: dict[str, Any] | None = None,
+                 memory: RunMemory | None = None):
         self.run_id, self.org, self.goal = run_id, org, goal
         self.store, self.router = store, router
         self.options = options or RunOptions()
@@ -170,6 +172,8 @@ class RunContext:
         self.run_dir = run_dir
         #: set in project mode: root, base, branch (ADR-016)
         self.project = project
+        #: approved memory this run may draw on, or None (FR-24). Empty/None = a no-op.
+        self.memory = memory
         self._commit_lock = asyncio.Lock()
         self.workspace = Workspace(
             run_dir, on_write=lambda p, v, sha, n, a: store.add_file(run_id, p, v, sha, n, a),
@@ -230,7 +234,8 @@ class RunContext:
 
     # ------------------------------------------------------------------ model calls
     async def call(self, agent: AgentSpec, messages: list[Message], specs: list[ToolSpec],
-                   step: str, avoid: tuple[str, ...] = (), prefer: str | None = None) -> CallResult:
+                   step: str, avoid: tuple[str, ...] = (), prefer: str | None = None,
+                   memory_tokens: int = 0) -> CallResult:
         self.checkpoint()
         req = CallRequest(messages=messages, tools=specs, tier=agent.tier,
                           allow_downgrade=agent.allow_downgrade,
@@ -244,7 +249,7 @@ class RunContext:
         u = res.response.usage
         self.budget.charge(u)
         self.store.add_usage(self.run_id, agent.id, res.entry.provider, res.entry.name,
-                             u.prompt_tokens, u.completion_tokens)
+                             u.prompt_tokens, u.completion_tokens, memory_tokens)
         fams = self.families.setdefault(agent.id, [])
         if res.entry.family not in fams:
             fams.append(res.entry.family)
@@ -635,9 +640,18 @@ class Engine:
         return out
 
     async def agent_out(self, agent: AgentSpec, task: str, step: str, *, context: str = "",
-                        avoid: tuple[str, ...] = (), tools: list[str] | None = None) -> StepOutput:
+                        avoid: tuple[str, ...] = (), tools: list[str] | None = None,
+                        memory: str = "") -> StepOutput:
+        mem_tokens = 0
+        mem = self.ctx.memory
+        if memory and mem is not None and mem.gives(memory):
+            block, ids, mem_tokens = mem.block(agent.role, f"{self.ctx.goal} {task}")
+            if block:
+                context = f"{context}\n\n{block}".strip() if context else block
+                self.ctx.emit("memory.injected", agent=agent.id, step=step, position=memory,
+                              entries=list(ids), tokens=mem_tokens)
         r: AgentResult = await run_agent(self.ctx, agent, task, step=step, context=context,
-                                         avoid=avoid, tools=tools)
+                                         avoid=avoid, tools=tools, memory_tokens=mem_tokens)
         return StepOutput(text=r.text, data={"kind": "agent", "family": r.family, **r.data()})
 
     # ------------------------------------------------------------------ simple steps
@@ -680,7 +694,8 @@ class Engine:
     # ------------------------------------------------------------------ review loop
     async def _review_loop(self, s: ReviewLoopStep, path: str) -> StepOutput:
         return await self.review_cycle(self.org.agent(s.builder), s.reviewers, s.checks,
-                                       self.ctx.render(s.task), s.max_rounds, s.rule, path)
+                                       self.ctx.render(s.task), s.max_rounds, s.rule, path,
+                                       memory="builder")
 
     async def run_checks(self, names: list[str], step: str) -> StepOutput:
         results = []
@@ -692,7 +707,7 @@ class Engine:
 
     async def review_cycle(self, builder: AgentSpec, reviewer_ids: list[str], checks: list[str],
                            task: str, max_rounds: int, rule: str, path: str,
-                           context: str = "") -> StepOutput:
+                           context: str = "", memory: str = "") -> StepOutput:
         feedback = ""
         build = StepOutput()
         approved = False
@@ -706,7 +721,7 @@ class Engine:
                 f"accepted. Fix every problem listed below, then summarise what you changed.\n\n"
                 f"{feedback}")
             build = await self.cached(f"{rp}/build", lambda: self.agent_out(
-                builder, btask, f"{rp}/build", context=context,
+                builder, btask, f"{rp}/build", context=context, memory=memory,
                 avoid=self.ctx.avoid_for(builder)))
             checks_out = await self.cached(f"{rp}/checks", lambda: self.run_checks(checks, f"{rp}/checks"))
             results = checks_out.data["results"]
@@ -1104,7 +1119,7 @@ class Engine:
             mgr, ("Integrate your team's results into the final report for this work. State "
                   "plainly any task that failed, was skipped, or was not approved.\n\n"
                   f"THE WORK:\n{task}"),
-            f"{path}/integrate", context=f"TASK RESULTS:\n{summary}",
+            f"{path}/integrate", context=f"TASK RESULTS:\n{summary}", memory="manager",
             tools=[t for t in mgr.tools if TOOLS[t].perm == "read"]))
         report = f"# Report\n\n{final.text}\n\n---\n\n## Task ledger (recorded by Cadre)\n\n" + "\n".join(
             f"- `{r['id']}` {r['title']} — **{r['assignee']}** — {r['status']}"
@@ -1161,12 +1176,49 @@ class Engine:
         reviewers = [r for r in [s.reviewer] if r and r != worker.id]
         if reviewers or s.checks:
             out = await self.review_cycle(worker, reviewers, s.checks, wtask, s.review_rounds,
-                                          "all", tp, context=context)
+                                          "all", tp, context=context, memory="worker")
         else:
             out = await self.agent_out(worker, wtask, f"{tp}/work", context=context,
-                                       avoid=self.ctx.avoid_for(worker))
+                                       memory="worker", avoid=self.ctx.avoid_for(worker))
         out.data.update(task=t["id"], title=t["title"], assignee=worker.id)
         return out
+
+    async def retrospect(self, goal: str, result: str, max_facts: int = 3) -> list[str]:
+        """One end-of-run call proposing durable, reusable facts for later runs (FR-24). Returns at
+        most `max_facts` short strings; never raises — a failure just means no proposals."""
+        agent = AgentSpec(id="retrospector", role="a careful note-taker for the team's memory",
+                          tier="fast", tools=[], max_output_tokens=900, temperature=0.2)
+        schema = schema_text({"facts": ["one short, durable fact (<=400 chars)"]})
+
+        def valid(obj: Any) -> str | None:
+            if not isinstance(obj, dict) or not isinstance(obj.get("facts"), list):
+                return 'expected {"facts": ["…", …]}'
+            return None
+
+        task = (
+            f"The run for this goal has finished. Propose at most {max_facts} durable facts worth "
+            "remembering for FUTURE runs on this same project — conventions, how the tests or build "
+            "are run, a gotcha, or a decision and its reason. Only lasting facts a later run would "
+            "otherwise relearn; skip anything specific to this one run. Each fact one sentence, at "
+            "most 400 characters, self-contained. Reply with ONLY the JSON object.")
+        context = f"THE GOAL:\n{goal}\n\nWHAT THIS RUN PRODUCED (excerpt):\n{_brief(result, 1500)}"
+        notes = self.ctx.notes[-8:]
+        if notes:
+            context += "\n\nTEAM BOARD:\n" + "\n".join(f"- {a}: {t}" for a, t in notes)
+        try:
+            obj, _ = await ask_json(self.ctx, agent, task, schema, valid,
+                                    step="w/retrospective", context=context)
+        except Exception as e:  # a retrospective must never fail a finished run
+            self.ctx.emit("memory.retrospective_failed", error=str(e))
+            return []
+        if not obj:
+            return []
+        facts: list[str] = []
+        for f in obj.get("facts", []):
+            s = " ".join(str(f).split()).strip()
+            if s and len(s) <= 400:
+                facts.append(s)
+        return facts[:max_facts]
 
 
 def unapproved_steps(store: Store, run_id: str) -> list[str]:

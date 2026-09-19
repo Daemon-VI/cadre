@@ -117,7 +117,7 @@ def test_a_v2_database_migrates_and_keeps_its_rows(tmp_path):
     db.commit()
     db.close()
     store = Store(p)
-    assert store.version == SCHEMA_VERSION == 4
+    assert store.version == SCHEMA_VERSION == 5
     assert store.get_run("r-old")["status"] == "succeeded"          # untouched
     cols = {r[1] for r in store._db.execute("PRAGMA table_info(runs)")}
     assert {"owner_user", "owner_team"} <= cols

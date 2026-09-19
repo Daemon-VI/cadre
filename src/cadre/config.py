@@ -176,8 +176,12 @@ class Home:
     def token_path(self) -> Path:
         return self.root / "token"
 
+    @property
+    def memory_dir(self) -> Path:
+        return self.root / "memory"
+
     def ensure(self) -> Home:
-        for d in (self.root, self.runs_dir, self.orgs_dir):
+        for d in (self.root, self.runs_dir, self.orgs_dir, self.memory_dir):
             d.mkdir(parents=True, exist_ok=True)
         if not self.token_path.exists():
             self.token_path.write_text(pysecrets.token_urlsafe(32), encoding="utf-8")

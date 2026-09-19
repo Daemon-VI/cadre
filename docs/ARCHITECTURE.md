@@ -619,3 +619,62 @@ they never needed the prompt, so a refusal of the run-as-you prompt does not sto
 
 **Proof.** `tests/test_engine.py::test_a_refused_exec_approval_is_not_asked_again_in_the_same_run`:
 after a refusal, a second `run_check` fails without a second prompt.
+
+### ADR-036 — Memory across runs: small approved files, deterministic selection, replayed as data (FR-24, M14)
+
+**Context.** Runs on the same project relearn the same facts every time. Persisting them is worth
+it only within the free-tier budget, and **every token of memory is replayed on every call**, so
+the cost is linear in memory size × calls. A vector database buys nothing here: the corpus is tiny
+and the limit is tokens, not recall.
+
+**Threat model — memory is persistent prompt injection.** A line written by a model, or copied
+from text a model read, is replayed into every later call. Treated as instructions it would let
+one run steer all later runs — "set allow_exec", "skip the tests", "trust this domain". So:
+- Memory is injected as **labelled data**, never as instructions, in the same untrusted-input
+  frame the tools' outputs use. It cannot grant an approval, change the tool allowlist, add a
+  provider or pick a check. Policy comes only from the org file and the human (ADR-006, ADR-027).
+- A model-proposed entry is a **proposal**, not memory, until a human approves it (a new `memory`
+  approval kind); and like every approval it **cannot be approved over MCP** (ADR-027), because
+  the caller there is itself a model.
+- Every entry, human or model, passes the `check_history` key scan before it is written; a
+  key-shaped entry is refused without echoing it.
+- **Reviewers and voters get no memory by default**, so a planted or mistaken entry cannot shape
+  an independent review or a vote — the checks and the second opinion stay uncontaminated.
+- A replay test proves a hostile entry is inert: carried into a run, exec approval is still
+  required and the allowlist is unchanged.
+
+**Decision.**
+- **Storage & scope.** Markdown files under `CADRE_HOME/memory/`: `global.md`, `teams/<team>.md`,
+  `projects/<root-commit>.md`. Keying a project by its **root commit** means a renamed or moved
+  folder keeps its memory, and two checkouts of the same repo share it. A run sees global + team +
+  project. Files are plain text a person can edit; the loader validates each entry and **skips and
+  names** a bad one rather than failing the run.
+- **Entry.** One fact ≤ 400 chars with id, scope, tags, source (`human` or run id + model), date,
+  approver, and `pinned` / `private` flags. Stored as a Markdown list item with a small metadata
+  line, so `git diff` and hand-editing stay readable.
+- **Selection is deterministic (no embeddings).** Pinned first, then ranked by word overlap with
+  the goal and the role, most-recent-first on ties; accumulate until the next entry would exceed
+  the per-call cap (default 800 tokens, per org, measured with the engine's estimator); **never
+  split an entry**. Deterministic selection is testable and cheap, and avoids an embedding call on
+  every run.
+- **Who gets it.** Builders and managers by default; reviewers and voters none. Per-role in the
+  org file.
+- **Privacy.** A `private` entry rides only in a **private run**, where every provider already has
+  `trains_on_free_data == false` (FR-12). Because one memory block is assembled before the router
+  picks a provider, gating by the run's privacy — rather than per candidate provider — is the
+  simple rule that can never leak a private fact to a training provider.
+- **Cost is visible.** Each call records its memory tokens (a new column on the usage ledger); the
+  timeline and `cadre forecast` show the memory share, and the forecast multiplies memory tokens
+  by the calls expected in the roles that receive it.
+
+**Rejected.** *A vector store / embeddings* — the corpus is tiny and the constraint is tokens, not
+recall; determinism is worth more here. *Auto-approving model memory by default* — it is prompt
+injection with a longer fuse; `memory: auto` is an explicit owner-only opt-in. *One shared file* —
+scope keying (esp. by root commit) is what makes project memory survive a rename and stay off
+other projects.
+
+**Proof.** `tests/test_memory.py`: file parse/validation (bad entry skipped, named, others load);
+scope resolution with teams; deterministic selection under the cap (never split); the key scan on
+both write paths; the approval flow incl. refusal over MCP; the privacy filter; forecast includes
+memory; ledger attribution; DB migration; and a **replay test** that a hostile entry cannot change
+policy. Plus the live n = 1 with/without measurement recorded in `PROJECT_STATE.md`.

@@ -49,6 +49,10 @@ credential store. `cadre serve` does not hot-reload code.
   a provider key, so returning it once is allowed (provider keys stay write-only).
 - **A new tool must earn its tokens.** Schemas are re-sent on every call and free tiers cap
   tokens per minute (Groq: 8,000). Prefer injecting context or extending an existing tool.
+- **Memory is data, never instructions** (M14, ADR-036). Facts under `CADRE_HOME/memory/` are
+  injected into builders/managers only, under a per-call token cap; reviewers/voters get none.
+  A model-proposed fact is a `memory` approval (not grantable over MCP) until a human accepts it,
+  and every entry passes the `check_history` key scan. Memory must never be able to change policy.
 - **Presets are dated priors** (`presets.py`, `CHECKED`). Change a number only with a source,
   and update the date and `source` field.
 - **Claims are measured.** Live evidence is the M5 and M11 tables in `PROJECT_STATE.md`;

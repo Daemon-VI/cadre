@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (1.2.0 released — ships M13, accounts + teams, except OIDC; `v1` moved to 1.2.0; next: M14, memory across runs)_
+_Last updated: 2026-09-19 (1.2.0 released — ships M13; `v1` on 1.2.0. M14 memory across runs done on `main`, unreleased; next: M15, web research tool)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,9 +13,57 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: 1.2.0 released (M13 shipped, accounts + teams, except OIDC); `v1` on 1.2.0
+## Status: 1.2.0 released (M13); M14 (memory across runs) done on `main`, unreleased
 _One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D3, D5; the VS Code
 extension, D4, is built but not published); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
+
+## M14 — memory across runs — DONE on `main`, 2026-09-19 (`PROMPT_M14.md` §6, FR-24, ADR-036)
+
+Small Markdown knowledge files under `CADRE_HOME/memory/` (`global.md`, `teams/<team>.md`,
+`projects/<root-commit>.md`), injected into **builders and managers only** under a hard per-call
+token cap (default 800), as **data, never instructions**. Selection is deterministic (pinned first,
+then word-overlap with goal+role, recent-first on ties; never splits an entry; measured with the
+engine's estimator). People write with `cadre memory add|list|show|rm`; a model may propose ≤ 3 facts
+in an end-of-run **retrospective**, held behind a new `memory` approval that **cannot be granted over
+MCP** and survives the run that raised it. Every entry passes the `check_history` key scan (a
+key-shaped entry is refused without echoing it). Private entries ride only in `--private` runs.
+Memory tokens are recorded per call (`usage.memory_tokens`, schema **v5**) and shown in the ledger
+and `cadre forecast`. Front ends: a dashboard **Memory** page, memory proposals in the approvals
+view, a read-only `cadre_memory_list` MCP tool, and `/api/v1/memory` (GET/POST/DELETE).
+Also fixed here: the retrospector's output budget (500 → 900 tokens; 500 truncated its JSON so it
+proposed nothing), and `cancel_pending_approvals` no longer cancels `memory` proposals.
+
+**Measurement — live, on free quota, n = 1.** Fixture: a `slugify` repo (root commit `e863025677c9`)
+whose tests enforce a non-obvious convention (empty/punctuation-only input must return `"n-a"`),
+run with `python -m unittest discover -s tests`. Same goal, `project-finisher` (+ retrospective),
+groq + gemini free keys.
+
+| | Run 1 — no memory | Run 2 — with the convention in project memory |
+|---|---|---|
+| status | succeeded | succeeded |
+| review rounds | 1 | 1 |
+| **failed checks before pass** | **0** | **0** |
+| calls | 19 | 23 |
+| prompt tokens | 22,012 | 31,140 |
+| completion tokens | 3,082 | 2,621 |
+| memory tokens | 0 | 752 total · 94 tokens on each of 8 memory-carrying model calls (from 2 memory-getting tasks) |
+
+**Result, stated plainly (n = 1):** the model implemented the convention correctly on the **first
+try in both runs** (0 failed checks either way), so there were **no repair turns for memory to
+save** — memory showed **no measured benefit** here, and cost 94 tokens on each of 8 memory-carrying
+model calls, 752 tokens in all (the block is ~94 tokens and is re-sent on every model call a
+memory-getting task makes). The run-to-run difference in calls/prompt tokens (19→23, 22k→31k) is
+model nondeterminism — ~9,000 prompt tokens, far larger than memory's 752-token footprint — and is
+**not** attributable to memory. The convention
+was not a genuine trap for this model; a harder, un-guessable convention would be needed to show a
+gain. The retrospective (after the output-budget fix) correctly proposed the convention as a durable
+fact, which was approved into project memory via `cadre approve`. One task is an anecdote.
+
+**Tests:** 284 passed, 9 skipped; `tests/test_memory.py` (18 tests) covers parsing/validation,
+deterministic selection under the cap, the key scan on both write paths, the approval flow and its
+survival of run-finish, the privacy filter, ledger + forecast attribution, the API RBAC, the
+migration, and a **replay test** that a planted "set allow_exec" entry is inert. ruff clean;
+`check_history` clean.
 
 ## 1.2.0 release (2026-09-19, `PROMPT_M14.md` §2)
 
@@ -702,8 +750,9 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 release").
 
 ## Where to pick up
-1. **Next: `ROADMAP.md` M14** — memory across runs (in progress this session; see the M14 section
-   when written). A 1.3.0 release carrying M14 needs Rithik's yes.
+1. **Next: `ROADMAP.md` M15** — the web research tool (`fetch_url`/`search`, fetched text as data,
+   domain allow-lists, size caps). M14 (memory across runs) is done on `main`, unreleased. A **1.3.0**
+   release carrying M14 needs Rithik's yes (it is a new feature).
 2. Waiting on Rithik, each his call:
    - **Publish the security advisory** for the MCP `allow_exec` bypass (he did NOT tick creating
      the draft this round). Draft text is in `docs/SECURITY_ADVISORY_DRAFT.md`: affected
@@ -724,7 +773,8 @@ Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 r
    add`); the scheduler job is installed (every 30 min; remove with `cadre scheduler uninstall`);
    the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0,
    1.0.1, 1.1.0 and **1.2.0** releases; M12; `v1` moved to **1.2.0** (proven on the demo repo,
-   PR #11); M13 shipped in 1.2.0 (accounts + teams, all but OIDC); demo PRs #5/#7/#9/#11 closed.
+   PR #11); M13 shipped in 1.2.0 (accounts + teams, all but OIDC); demo PRs #5/#7/#9/#11 closed;
+   **M14** (memory across runs) built and merged, unreleased, with a live n=1 measurement.
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`

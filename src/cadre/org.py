@@ -115,6 +115,27 @@ class Budget(_Strict):
     max_tokens_per_day: int | None = Field(None, ge=100)
 
 
+class MemorySettings(_Strict):
+    """How this org uses memory across runs (FR-24, ADR-036). Empty memory is a no-op, so the
+    defaults leave behaviour unchanged until someone adds a fact."""
+    #: inject approved memory into the roles below (a run still only sees memory it is given)
+    enabled: bool = True
+    #: hard per-call cap, measured with the token estimator; an entry is never split
+    cap_tokens: int = Field(800, ge=0, le=20000)
+    #: which positions receive memory. Reviewers and voters are excluded by default on purpose, so
+    #: an earlier decision cannot shape an independent review or a vote (ADR-036).
+    roles: list[str] = Field(default_factory=lambda: ["builder", "worker", "manager"])
+    #: propose at most three facts at the end of a run (an extra model call; off by default)
+    retrospective: bool = False
+    #: owner-only: land the owner's own retrospective proposals without a separate approval
+    auto: bool = False
+
+    @field_validator("roles", mode="before")
+    @classmethod
+    def _listify_roles(cls, v: Any) -> Any:
+        return [v] if isinstance(v, str) else v
+
+
 class _Step(_Strict):
     id: str | None = Field(None, pattern=SLUG)
     title: str = ""
@@ -190,6 +211,7 @@ class OrgSpec(_Strict):
     agents: list[AgentSpec] = Field(min_length=1)
     checks: list[CheckSpec] = Field(default_factory=list)
     budget: Budget = Field(default_factory=Budget)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
     workflow: Step
 
     def agent(self, aid: str) -> AgentSpec:

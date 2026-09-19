@@ -355,6 +355,19 @@ Python classes and functions.
   **model allowance** (limit the team to certain providers/models). Cancelling or resuming a run
   and deciding its approvals is limited to an admin, the run's owner, or a member of its team.
   OIDC SSO is not built yet; per-user tokens are the only sign-in.
+- **Memory across runs (M14).** Cadre can remember small facts between runs — how the tests run, a
+  convention, a decision — and replay them to builders and managers under a hard per-call token cap
+  (default 800). Facts live in Markdown under `CADRE_HOME/memory/` at global, team and project
+  scope (a project is keyed by its root commit, so a rename keeps its memory). You write them with
+  `cadre memory …`; a model can propose up to three at the end of a run, which wait for a `memory`
+  approval (never grantable over MCP). Memory is injected as **data, never instructions** (a test
+  proves a planted "set allow_exec" entry is inert); reviewers and voters get none; entries pass
+  the same key-shape scan as the history check. Memory tokens show in the ledger and the forecast.
+  **Measured (n = 1, live on free quota):** on a fixture with a non-obvious convention, the model
+  got it right first try both with and without memory (0 failed checks either way), so there were
+  no repair turns for memory to save — memory added 94 tokens to each of 8 model calls (752 total)
+  for no measured benefit on that task. One task is an anecdote; a harder convention is needed to show a
+  gain, and that is reported plainly rather than dressed up.
 - Keys live in the OS credential store or your environment — never in `config.yaml`, the
   database, events, API responses or logs. Loaded keys are redacted from everything stored.
 - Respect each provider's terms. Cadre spreads work across *different* providers; it does not

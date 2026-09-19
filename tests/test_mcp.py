@@ -1,4 +1,4 @@
-"""`cadre mcp` (FR-17, ADR-027): five tools, a thin client of the API, no approvals over MCP."""
+"""`cadre mcp` (FR-17, ADR-027): six tools, a thin client of the API, no approvals over MCP."""
 
 import asyncio
 import json
@@ -29,7 +29,8 @@ workflow:
   - {agent: a, task: "write about {goal}"}
   - approval: "Ship it?"
 """
-FIVE = {"cadre_list_orgs", "cadre_forecast", "cadre_start_run", "cadre_run_status", "cadre_usage"}
+TOOLS = {"cadre_list_orgs", "cadre_forecast", "cadre_start_run", "cadre_run_status", "cadre_usage",
+         "cadre_memory_list"}
 
 
 def wire(home, replies=None):
@@ -55,11 +56,11 @@ def all_text(result) -> str:
     return json.dumps(result.model_dump(mode="json"))
 
 
-async def test_exactly_five_tools_and_none_can_approve(home):
+async def test_exactly_the_read_and_run_tools_and_none_can_approve(home):
     server, _ = wire(home)
     async with Client(server, raise_exceptions=True) as c:
         tools = (await c.list_tools()).tools
-    assert {t.name for t in tools} == FIVE
+    assert {t.name for t in tools} == TOOLS
     for t in tools:
         schema = json.dumps(t.input_schema if hasattr(t, "input_schema") else t.inputSchema)
         assert "approve" not in t.name and "auto_approve" not in schema

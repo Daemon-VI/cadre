@@ -135,6 +135,24 @@ the `..` tests exercise.
 | AC-23.9 model allowances | `test_model_allowance_matching`; `test_router::test_a_team_allowance_limits_which_models_a_call_may_use`; impossible allowance fails at start (`test_team_budget_gate_and_allowance_at_run_start`) |
 | AC-23.10 action routing | `test_may_act_on_run_is_scoped_to_owner_team_or_admin`; `test_only_a_teammate_or_admin_can_cancel_a_team_run`, `test_starting_a_run_for_a_team_you_are_not_in_is_refused`, `test_admin_sees_teams_but_a_member_does_not`, `test_me_lists_the_callers_teams` |
 
+## M14 traceability — memory across runs (2026-09-19, FR-24, ADR-036)
+
+| Requirement | Test |
+|---|---|
+| AC-24.1/24.2 files, scopes, entry shape, bad entries skipped | `test_memory::test_parse_keeps_good_entries_and_names_the_bad_ones_without_crashing`, `test_a_bare_hand_written_line_is_an_approved_human_fact`, `test_an_entry_with_metadata_but_no_approver_is_pending`, `test_scopes_merge_and_an_unknown_scope_is_rejected`, `test_store_round_trips_and_reports_bad_entries` |
+| AC-24.3/24.4 write paths (human + model proposal), approval flow, survives run finish | `test_finalize_approves_or_removes_a_proposal`, `test_memory_proposals_outlive_the_run_that_raised_them`; live: retrospective proposed 3 facts, one approved via `cadre approve` into project memory |
+| AC-24.4 no memory approval over MCP | `test_mcp::test_exactly_the_read_and_run_tools_and_none_can_approve` (no approve tool; `cadre_memory_list` is read-only) |
+| AC-24.5 key scan on both write paths, no echo | `test_the_key_scan_guards_both_write_paths`, `test_the_memory_key_scan_is_the_same_one_check_history_uses` |
+| AC-24.6 deterministic selection under the cap, never split | `test_selection_is_pinned_first_then_by_overlap_then_recency`, `test_selection_respects_the_cap_and_never_splits_an_entry` |
+| AC-24.7 builders/managers get memory, reviewers/voters do not | `test_memory_reaches_a_builder_but_not_a_reviewer_and_the_ledger_records_it` |
+| AC-24.8 privacy filter | `test_pending_and_private_entries_are_filtered` |
+| AC-24.9 ledger + forecast attribution | `test_memory_reaches_a_builder_…` (ledger + `memory.injected`), `test_the_forecast_includes_a_memory_line` |
+| AC-24.10 scope permissions over the API | `test_a_member_writes_memory_a_viewer_only_reads_it` |
+| AC-24.11 API/OpenAPI, MCP read-only tool | `test_distribution::test_openapi_snapshot_pins_the_v1_contract` (adds `/memory`), `test_mcp` tool set |
+| AC-24.12 replay: a hostile entry cannot change policy | `test_a_hostile_memory_entry_is_carried_as_data_and_cannot_change_policy` |
+| AC-24.13 measured, live | `PROJECT_STATE.md` "M14 measurement" (n = 1) |
+| migration (usage.memory_tokens) | `test_a_pre_m14_database_gains_the_memory_tokens_column`, `test_migration::test_v01_database_opens_and_keeps_rows` |
+
 ## Live regressions (M5, 2026-09-17)
 
 Each is a test built from what a real model or provider did:

@@ -22,6 +22,16 @@ SERVICE = "cadre"
 _SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSW|CREDENTIAL|AUTH)", re.I)
 _MIN_SECRET = 8  # shorter strings are too likely to collide with ordinary text
 
+# Full-length provider API-key shapes: Groq / Google (two formats) / OpenRouter. This pattern is
+# kept byte-for-byte identical to `tools/check_history.py`'s KEYS (a test asserts they match), so
+# the same scan that guards commit history also guards anything written to memory (FR-24, ADR-036).
+KEY_SHAPES = re.compile(r"gsk_[A-Za-z0-9]{40,}|AIza[0-9A-Za-z_-]{35}|AQ\.[0-9A-Za-z_-]{50}|sk-or-v1-[0-9a-f]{64}")
+
+
+def looks_like_key(text: str) -> bool:
+    """True if `text` contains a full-length provider API-key shape (see KEY_SHAPES)."""
+    return bool(KEY_SHAPES.search(text or ""))
+
 
 class Redactor:
     def __init__(self) -> None:

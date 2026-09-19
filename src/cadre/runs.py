@@ -35,7 +35,8 @@ from .engine import (
     unapproved_steps,
 )
 from .forecast import estimate, forecast
-from .org import CheckSpec, OrgError, find_org_text, load_org_text
+from .memory import MemoryRefused, MemoryStore, RunMemory, project_scope
+from .org import CheckSpec, OrgError, OrgSpec, find_org_text, load_org_text
 from .project import (
     ProjectError,
     commits_on_branch,
@@ -70,6 +71,7 @@ class RunManager:
         self.home = home.ensure()
         self.store = store or Store(home.db_path)
         self.accounts = Accounts(self.store)
+        self.memory = MemoryStore(self.home.memory_dir)
         self.secrets = secrets or SecretStore()
         self.quotas = QuotaBook(on_change=self.store.quota_save, loader=self.store.quota_load)
         self._router = router
@@ -165,6 +167,70 @@ class RunManager:
                 + (" that does not train on prompts" if private else "")
                 + ". Widen the allowance (`cadre team allow`) or add a matching provider.")
 
+    # ------------------------------------------------------------------ memory (FR-24)
+    def _memory_scopes(self, run: dict[str, Any]) -> list[str]:
+        """The scopes a run draws memory from: global + its team + its project (root commit)."""
+        scopes = ["global"]
+        if run.get("owner_team"):
+            scopes.append(f"team:{run['owner_team']}")
+        if run.get("project_path"):
+            sc = project_scope(run["project_path"])
+            if sc:
+                scopes.append(sc)
+        return scopes
+
+    def _run_memory(self, org: OrgSpec, run: dict[str, Any], options: RunOptions,
+                    ) -> tuple[RunMemory | None, list[str], list[str]]:
+        if not org.memory.enabled:
+            return None, [], []
+        scopes = self._memory_scopes(run)
+        entries, bad = self.memory.entries(scopes, include_pending=False)
+        private = (options.privacy or org.privacy) == "private"
+        rm = RunMemory(entries=entries, cap=org.memory.cap_tokens, private_ok=private,
+                       roles=tuple(org.memory.roles))
+        return rm, scopes, bad
+
+    def _proposal_scope(self, run: dict[str, Any]) -> str:
+        """Where a run's retrospective facts are proposed: its project, else its team, else global."""
+        if run.get("project_path"):
+            sc = project_scope(run["project_path"])
+            if sc:
+                return sc
+        if run.get("owner_team"):
+            return f"team:{run['owner_team']}"
+        return "global"
+
+    async def _retrospect(self, ctx: RunContext, run: dict[str, Any], org: OrgSpec,
+                          result: str) -> None:
+        if not org.memory.retrospective:
+            return
+        facts = await Engine(ctx).retrospect(run["goal"], result)
+        if not facts:
+            return
+        scope = self._proposal_scope(run)
+        owner = run.get("owner_user")
+        auto = bool(org.memory.auto and owner)  # owner-only: land the owner's own proposals
+        for text in facts:
+            aid = self.store.create_approval(run["id"], "memory", "retrospector",
+                                             "w/retrospective", text)
+            try:
+                self.memory.propose(scope, text, source=f"{run['id']}/retrospective", approval=aid)
+            except MemoryRefused as e:
+                self.store.decide(aid, False, str(e))
+                self.store.add_event(run["id"], "memory.rejected", data={"reason": str(e)})
+                continue
+            self.store.add_event(run["id"], "memory.proposed",
+                                 data={"approval": aid, "scope": scope, "text": text, "auto": auto})
+            if auto:
+                self.store.decide(aid, True, "auto-approved (memory: auto, owner)")
+                self.memory.finalize(aid, True, owner)
+
+    def apply_memory_decision(self, aid: str, approved: bool, by: str | None) -> None:
+        """Called after a `memory` approval is decided (via CLI or API): apply it to the file."""
+        ap = self.store.get_approval(aid)
+        if ap and ap.get("kind") == "memory":
+            self.memory.finalize(aid, approved, by or "owner")
+
     async def execute(self, run_id: str, approver: Approver | None = None) -> dict[str, Any]:
         run = self.store.get_run(run_id)
         if run is None:
@@ -189,16 +255,22 @@ class RunManager:
                 hint = "; ".join(self.warnings) or "no providers are configured"
                 raise StepFailed(f"no usable model — {hint}. Add one with `cadre provider add groq`, "
                                  "or try the offline demo with --demo")
+            run_memory, mem_scopes, mem_bad = self._run_memory(org, run, options)
             ctx = RunContext(run_id, org, run["goal"], store, router,
-                             self.home.runs_dir / run_id, options, approver, project=project)
+                             self.home.runs_dir / run_id, options, approver, project=project,
+                             memory=run_memory)
             store.update_run(run_id, privacy="private" if ctx.private else "standard")
             ctx.emit("run.started", org=org.name, goal=run["goal"], resumed=resumed,
                      models=[m.key for m in router.usable(ctx.private)], warnings=self.warnings,
                      workspace=str(ctx.workspace.root), private=ctx.private)
+            if run_memory is not None and (run_memory.entries or mem_bad):
+                ctx.emit("memory.loaded", scopes=mem_scopes, entries=len(run_memory.entries),
+                         skipped=mem_bad)
             if not resumed:
                 try:  # forecast vs actual is an M5/M11 measurement; never block a run on it
-                    fc = forecast(estimate(store, org, run["goal"], run.get("project_path")),
-                                  router, ctx.private)
+                    mem_per_call = run_memory.block("builder", run["goal"])[2] if run_memory else 0
+                    fc = forecast(estimate(store, org, run["goal"], run.get("project_path"),
+                                           mem_per_call=mem_per_call), router, ctx.private)
                     ctx.emit("run.forecast", **fc.as_dict())
                 except Exception as e:
                     ctx.emit("run.forecast", error=str(e))
@@ -235,6 +307,10 @@ class RunManager:
         except Exception as e:  # keep the run record honest even for our own bugs
             store.add_event(run_id, "run.crashed", data={"trace": traceback.format_exc()[-4000:]})
             return self._finish(run_id, "failed", error=f"internal error: {type(e).__name__}: {e}")
+        try:  # a retrospective proposes memory for later runs; it must never fail a finished run
+            await self._retrospect(ctx, run, org, out.text)
+        except Exception as e:
+            ctx.emit("memory.retrospective_failed", error=str(e))
         unapproved = unapproved_steps(store, run_id)
         status = "unapproved" if unapproved else "succeeded"
         return self._finish(run_id, status, result=out.text, unapproved=unapproved)
