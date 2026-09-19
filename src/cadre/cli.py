@@ -124,7 +124,14 @@ def _read_key(pid: str, env: str | None, key_stdin: bool) -> str | None:
         return sys.stdin.readline().strip() or None
     found = store.where(pid, env)
     if found:
-        con.print(f"Using the key already available from {found}.")
+        # `add` never overwrites a key it finds: say how to replace one (a rotated key re-added
+        # with `add` silently kept the old one)
+        if found.startswith("env:"):
+            con.print(f"Using the key already available from {found}. To replace it, change "
+                      f"{found[4:]}; the environment comes before the stored key.")
+        else:
+            con.print(f"Using the key already stored in the OS credential store. To replace it, "
+                      f"run `cadre provider key {pid}`.")
         return None
     if not sys.stdin.isatty():
         # a hidden prompt with nobody at the keyboard hangs forever; say where we looked instead

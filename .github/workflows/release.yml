@@ -1,6 +1,6 @@
 name: Release
 
-# A full version tag (v1.1.0, v1.1.0rc1) publishes: wheel + sdist → TestPyPI → PyPI (trusted
+# A full version tag (v1.0.0, v1.0.0rc1) publishes: wheel + sdist → TestPyPI → PyPI (trusted
 # publishing, no token), standalone builds for Windows/macOS/Linux → the GitHub Release, and an
 # image → GHCR. The Action's moving major tag (`v1`, for `uses: Daemon-VI/cadre@v1`) and the
 # extension's `vscode-v*` tags never match. `workflow_dispatch` builds and smoke-tests everything
@@ -147,7 +147,8 @@ jobs:
             artifacts/dist/*
             artifacts/binary-*/*
           body: |
-            Install: `uvx cadre-ai` or `pip install cadre-ai`. See CHANGELOG.md for what changed.
+            Install: `pipx install cadre-ai` (or `uv tool install cadre-ai`), or run it without installing:
+            `uvx --from cadre-ai cadre --version`. See CHANGELOG.md for what changed.
 
             The standalone builds are **unsigned**: Windows SmartScreen and macOS Gatekeeper will warn.
             On macOS, run `xattr -d com.apple.quarantine cadre/cadre` once after unpacking. Checks that

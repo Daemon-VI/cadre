@@ -109,21 +109,26 @@ role, independence, check results, repairs and 429s. Then `claim-auditor`, versi
 - **M16 — hosted deployment.** Dockerfile, optional Postgres, TLS guidance, M13's auth in front —
   never before M12 and M13.
 
-## Distribution track D0–D7 (v1.0 → v1.1, added 2026-09-18)
+## Distribution track D0–D7 (shipped in 1.0.0; added 2026-09-18)
 
 `PROMPT_DISTRIBUTION.md`. Separate from the M numbers. Every front end is a thin client of the one
 engine (ADR-024). Stops for Rithik: making the repo public, the first publish to each channel,
 anything that costs money, installing software, widening his GitHub login, creating tokens, and
 the D6 decision.
 
+**Decision 2026-09-19: one release, 1.0.0.** Neither 1.0.0 (the engine) nor 1.1.0 (distribution)
+had been released, and every distribution feature was already on `main`. So both ship together as
+1.0.0 from `main`, and the two unreleased CHANGELOG sections were merged into one
+(`docs/PROMPT_RELEASE.md`).
+
 | # | Step | Closes | Status |
 |---|---|---|---|
-| **D0** | Open-source readiness: Apache-2.0, README for strangers, community files, CI matrix, cross-platform scheduler, `--allowed-host`, history/privacy scans, `/api/v1` | FR-14, FR-15 | built 2026-09-18; CI green on three OSs × two Pythons and the full-history gitleaks scan is clean (2026-09-19); public switch waits on Rithik |
+| **D0** | Open-source readiness: Apache-2.0, README for strangers, community files, CI matrix, cross-platform scheduler, `--allowed-host`, history/privacy scans, `/api/v1` | FR-14, FR-15 | built 2026-09-18; CI green on three OSs × two Pythons and the full-history gitleaks scan is clean (2026-09-19); **public since 2026-09-19** |
 | **D1** | Package the engine: wheel smoke test, PyPI trusted publishing (`cadre-ai`), PyInstaller builds, GHCR image | FR-16 | built 2026-09-18; `release.yml` build-only run green on 2026-09-19 (PyInstaller on three OSs, container smoke); first publish needs Rithik |
 | **D2** | MCP server (`cadre mcp`, five tools, no approvals over MCP) | FR-17 | built 2026-09-18; verified over real stdio; host checks pending |
 | **D3** | GitHub Action (project mode on the checkout → PR; trusted triggers only) | FR-18 | **verified 2026-09-19** on `Daemon-VI/cadre-action-demo`: PR #2 (Groq only, ~7 min) and PR #3 (Gemini + Groq, independent review, ~75 s), all 7 tests pass on both branches; the first two runs found four bugs, all fixed; not listed on the Marketplace; no `v1` tag yet |
 | **D4** | VS Code extension, published to the Marketplace and Open VSX | FR-19 | built 2026-09-18; 70 unit tests + 4 integration tests in the installed VS Code; `.vsix` installs; UI not observed on screen; not published |
-| **D5** | Docs site on GitHub Pages | FR-20 | built 2026-09-18 (nine pages, links checked, real-run replay); Pages not enabled, needs the repo public |
+| **D5** | Docs site on GitHub Pages | FR-20 | built 2026-09-18 (nine pages, links checked, real-run replay); **live 2026-09-19** at daemon-vi.github.io/cadre |
 | **D6** | Desktop app (Tauri 2 + PyInstaller sidecar) — only on Rithik's yes | FR-21 | **skipped** 2026-09-18 (Rithik): the dashboard, the extension and MCP cover it; unsigned installers would warn |
 | **D7** | Hosted website — **not in this programme**: a public server would run strangers' model-written code and hold their keys, so it stays behind M12 (sandboxed checks) and M13 (user accounts) | — | deferred |
 

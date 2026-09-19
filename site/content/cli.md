@@ -30,6 +30,7 @@ cadre provider add gemini
 cadre provider add openrouter       # discovers the current :free models
 cadre provider list
 cadre provider test groq
+cadre provider key groq             # replace a stored key, e.g. after rotating it
 ```
 
 The key goes to the OS credential store, never to a file. Environment variables are checked first:

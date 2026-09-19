@@ -11,26 +11,25 @@ opinions, and votes are counted by code.
 
 ## Quick start
 
-You need [uv](https://docs.astral.sh/uv/getting-started/installation/). Then:
+Cadre needs Python 3.12 or newer. Install it with `pipx install cadre-ai` or
+`uv tool install cadre-ai`, or run it without installing through
+[uv](https://docs.astral.sh/uv/getting-started/installation/) as `uvx --from cadre-ai cadre …`.
+The command is `cadre`.
 
 ```bash
-uvx cadre-ai provider add groq          # a free key from console.groq.com; typed at a hidden prompt
-uvx cadre-ai forecast project-finisher "Make the failing tests pass"     # will it fit today?
-uvx cadre-ai run project-finisher "Make the failing tests pass" --project ./my-repo --allow-exec
-git -C my-repo log --stat cadre/<run-id>                  # review the branch; Cadre never merges
+cadre provider add groq             # 1. a free key from console.groq.com, typed at a hidden prompt
+cadre forecast project-finisher "Make the failing tests pass"                  # 2. will it fit today?
+cadre run project-finisher "Make the failing tests pass" --project ./my-repo --allow-exec   # 3.
+git -C my-repo log --stat cadre/<run-id>     # 4. review the branch; Cadre never merges
 ```
 
-To install it rather than run it through `uvx`, use `uv tool install cadre-ai` or
-`pip install cadre-ai`. The command is `cadre` either way. With no key at all, `cadre run
-decision-board "Should we open a second office?" --demo` runs an offline scripted team.
-
-> **Not on PyPI yet.** The first publish is pending. Until then, work from a clone: `uv sync`,
-> then run `uv run cadre …` wherever this page says `cadre` or `uvx cadre-ai`.
+With no key at all, `cadre run decision-board "Should we open a second office?" --demo` runs an
+offline scripted team.
 
 ## Measured, not claimed
 
 Every number here was observed on free Groq and Google AI Studio keys on 2026-09-17/18 and is
-recorded with its run id in [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) (the M5 and M11
+recorded with its run id in [`docs/PROJECT_STATE.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/PROJECT_STATE.md) (the M5 and M11
 tables).
 
 | What | Result |
@@ -87,14 +86,14 @@ of it (ADR-024):
 - **AI editors (MCP):** `uvx --from "cadre-ai[mcp]" cadre mcp` gives Claude Code, VS Code, Cursor,
   Windsurf and Antigravity five tools: forecast, start a run, run status, usage and list orgs.
   They can't approve anything. There's a config snippet for each host in
-  [`docs/MCP_HOSTS.md`](docs/MCP_HOSTS.md).
+  [`docs/MCP_HOSTS.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/MCP_HOSTS.md).
 - **GitHub Action:** label an issue `cadre` or comment `/cadre <goal>`. Cadre runs
   `project-finisher` on the checkout and opens a pull request with its report and usage table.
   Only the owner, members and collaborators can trigger it. Copy
-  [`examples/github-action/cadre.yml`](examples/github-action/cadre.yml) and add a free key as a
+  [`examples/github-action/cadre.yml`](https://github.com/Daemon-VI/cadre/blob/main/examples/github-action/cadre.yml) and add a free key as a
   repository secret.
 - **VS Code extension** (Marketplace and Open VSX, so also Antigravity, Cursor and Windsurf): see
-  [`editors/vscode`](editors/vscode).
+  [`editors/vscode`](https://github.com/Daemon-VI/cadre/tree/main/editors/vscode).
 - **Container:** `ghcr.io/daemon-vi/cadre`, non-root, state in `/data`, keys from environment
   variables. See [`compose.yaml`](compose.yaml).
 - **Standalone downloads** for Windows, macOS and Linux are attached to each GitHub Release. They
@@ -112,6 +111,7 @@ uv run cadre presets               # every provider Cadre knows, with free-tier 
 uv run cadre provider add groq     # prompts for the key with input hidden
 uv run cadre provider list
 uv run cadre provider test groq
+uv run cadre provider key groq     # replace a stored key, e.g. after rotating it
 ```
 
 The key goes to the OS credential store (Windows Credential Manager, macOS Keychain, Secret
@@ -332,18 +332,18 @@ uv run ruff check src tests
 ```
 
 The tests need no network and no key: HTTP is mocked and models are scripted. See
-[`CONTRIBUTING.md`](CONTRIBUTING.md); report security problems privately as described in
-[`SECURITY.md`](SECURITY.md).
+[`CONTRIBUTING.md`](https://github.com/Daemon-VI/cadre/blob/main/CONTRIBUTING.md); report security problems privately as described in
+[`SECURITY.md`](https://github.com/Daemon-VI/cadre/blob/main/SECURITY.md).
 
 ## Licence
 
-Apache-2.0. See [`LICENSE`](LICENSE).
+Apache-2.0. See [`LICENSE`](https://github.com/Daemon-VI/cadre/blob/main/LICENSE).
 
 ## Documentation
 
-- [`docs/SRS.md`](docs/SRS.md) — requirements (the refined idea, FR/NFR list)
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — design and decision records
-- [`docs/OBJECTIVES.md`](docs/OBJECTIVES.md) — objectives, how each is met, evidence
-- [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — test strategy and requirement traceability
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what comes next, and what was deferred and why
-- [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) — where the project actually stands
+- [`docs/SRS.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/SRS.md) — requirements (the refined idea, FR/NFR list)
+- [`docs/ARCHITECTURE.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/ARCHITECTURE.md) — design and decision records
+- [`docs/OBJECTIVES.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/OBJECTIVES.md) — objectives, how each is met, evidence
+- [`docs/TEST_PLAN.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/TEST_PLAN.md) — test strategy and requirement traceability
+- [`docs/ROADMAP.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/ROADMAP.md) — what comes next, and what was deferred and why
+- [`docs/PROJECT_STATE.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/PROJECT_STATE.md) — where the project actually stands

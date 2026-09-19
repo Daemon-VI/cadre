@@ -464,7 +464,7 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 | Every template ran at least once on live free keys, numbers recorded | met | M5 table (five templates) |
 | Capstone results with raw numbers | met | M11 table (both succeeded) |
 | No key value in the repo, the database, `~/.cadre` | met | `git grep` finds five fake fixtures and two prefix-name docs; a content scan of `~/.cadre` (incl. `cadre.sqlite*`) for full-length Groq/Google key shapes found none; planted-key tests pass |
-| **No key value in the transcript** | **NOT met** | On 2026-09-17 Rithik pasted his Groq and Gemini keys into the chat. They stay exposed until he rotates both at the providers (console.groq.com/keys, aistudio.google.com/apikey) and re-adds the new ones with `uv run cadre provider add groq` / `gemini` at the hidden prompt |
+| **No key value in the transcript** | met 2026-09-19 | On 2026-09-17 Rithik pasted his Groq and Gemini keys into the chat. On 2026-09-19 he rotated both at the providers, so the pasted values are dead. A new key replaces a stored one with `uv run cadre provider key groq` / `gemini`; `provider add` keeps a key it finds, and now says so |
 | Server RSS measured while a run streams | met | 64.5 MB idle, 72.9 MB peak while a live run streamed 55 events through the dashboard's stream endpoint (curl as the client; the dashboard itself has not been seen in a browser) |
 | Docs match the code (`claim-auditor`) | met | audit 2026-09-18: every live number matched the store; its stale/unsupported items were corrected in the same commit |
 
@@ -472,9 +472,9 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 `CHANGELOG.md` says "1.0.0 — unreleased".
 
 ## Where to pick up
-1. **Rithik: rotate the Groq and Gemini keys** pasted into the chat on 2026-09-17, and re-add the
-   new ones at the hidden prompt (`uv run cadre provider add groq`, then `gemini`). That closes
-   the last definition-of-done item.
+1. ~~Rotate the pasted keys~~: done 2026-09-19. To put a new key into the local credential store,
+   use `uv run cadre provider key groq` (then `gemini`). `provider add` keeps a key it already
+   finds and says how to replace it.
 2. Then release: set 1.0.0 in `pyproject.toml` and `src/cadre/__init__.py`, date the CHANGELOG
    entry, update the README quick start (add a key → forecast → run → review the branch),
    commit, and create the local tag `v1.0.0`.
@@ -489,9 +489,8 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 5. Done 2026-09-18: private `Daemon-VI/cadre` created on Rithik's yes, `main` pushed. Tags and
    visibility still need his yes; CI needs a `gh` token with the `workflow` scope.
 6. ~~Workflow scope, then CI~~: done on 2026-09-19. CI is green on every OS (see the distribution table).
-7. **D0 gate:** once CI is green, ask Rithik to confirm making `Daemon-VI/cadre` public (he agreed
-   in principle on 2026-09-18). After that, enable Pages (Settings → Pages → GitHub Actions) and
-   turn on private vulnerability reporting.
+7. ~~D0 gate~~: done 2026-09-19. The repo is public, Pages is live and private vulnerability
+   reporting is on.
 8. ~~D3 real test~~: **done 2026-09-19**, PR #2 (Groq only) and PR #3 (Gemini + Groq, independent
    review, ~75 s) on `cadre-action-demo` (see "D3 on a real repository"). Ask before listing the
    action on the Marketplace, and before pushing a `v1` tag.
@@ -499,9 +498,9 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
    `Daemon-VI`, repository `cadre`, workflow `release.yml`, environment `pypi`; the same on
    test.pypi.org with environment `testpypi`). The Marketplace and Open VSX need tokens he stores
    with `gh secret set VSCE_PAT` / `OVSX_PAT`. GHCR needs a `v*` tag.
-10. **v1.1.0:** run `claim-auditor` over the README, the site and this file; install each front end
-    from its public channel in a clean environment; then tag.
-11. After v1.1: `ROADMAP.md` M12 (container runner for checks).
+10. **1.0.0** (one release, decided 2026-09-19; `docs/PROMPT_RELEASE.md`): tag, verify each channel
+    from a clean environment, run `claim-auditor` over the README, the site and this file.
+11. After 1.0.0: `ROADMAP.md` M12 (container runner for checks).
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`

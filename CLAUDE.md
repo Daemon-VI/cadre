@@ -58,7 +58,7 @@ override it). Never add a Claude co-author trailer or "Generated with" line. Bra
 Remote `origin` = `https://github.com/Daemon-VI/cadre`, **public since 2026-09-19** (docs site on
 Pages, private vulnerability reporting on). Commit, then push `main`; CI runs on every push. Pushing
 tags and the first publish to each registry are Rithik's calls — ask first. A full version tag
-(`v1.1.0`) publishes (`release.yml`); the Action's moving `v1` tag does not.
+(`v1.0.0`) publishes (`release.yml`); the Action's moving `v1` tag does not.
 In Git Bash, an argument starting with `/` (e.g. a `/cadre …` comment body) gets rewritten into a
 Windows path: set `MSYS_NO_PATHCONV=1` or pass it on stdin.
 A plain `git push` hangs here (Git Credential Manager opens a sign-in window); push with gh's login:
