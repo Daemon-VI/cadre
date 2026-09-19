@@ -342,8 +342,14 @@ Python classes and functions.
   now refuses to trust (ADR-031).
 - File tools cannot leave the run workspace (absolute paths, `..`, symlinks, drive letters,
   device names and alternate data streams are refused).
-- The API listens on 127.0.0.1, requires a bearer token (`~/.cadre/token`) on every call,
-  rejects non-loopback `Host` headers, sends no CORS headers, and serves a strict CSP.
+- The API listens on 127.0.0.1, requires a per-user bearer token on every call, rejects
+  non-loopback `Host` headers, sends no CORS headers, and serves a strict CSP.
+- **Users and roles (M13).** More than one person can share a server. Each has a token and a
+  role — **viewer** (read), **member** (read, run, decide approvals) or **admin** (everything,
+  plus managing users, tokens and providers). Manage them with `cadre user …` and `cadre token …`;
+  tokens are stored hashed and shown once. Your existing `~/.cadre/token` is the bootstrap admin,
+  so a single-user install is unchanged. An append-only audit log records who did what
+  (`cadre audit`). Shared provider keys stay server-side: members use them without seeing them.
 - Keys live in the OS credential store or your environment — never in `config.yaml`, the
   database, events, API responses or logs. Loaded keys are redacted from everything stored.
 - Respect each provider's terms. Cadre spreads work across *different* providers; it does not

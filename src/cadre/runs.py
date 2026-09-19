@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from .accounts import Accounts
 from .clocks import ist
 from .config import Home, build_router
 from .demo import demo_providers
@@ -67,6 +68,7 @@ class RunManager:
                  wall: Callable[[], float] = time.time):
         self.home = home.ensure()
         self.store = store or Store(home.db_path)
+        self.accounts = Accounts(self.store)
         self.secrets = secrets or SecretStore()
         self.quotas = QuotaBook(on_change=self.store.quota_save, loader=self.store.quota_load)
         self._router = router
@@ -109,7 +111,7 @@ class RunManager:
     # ------------------------------------------------------------------ lifecycle
     def create(self, org: str, goal: str, options: RunOptions | None = None, *,
                demo: bool = False, org_yaml: str | None = None, project: str | None = None,
-               base: str | None = None, allow_dirty: bool = False) -> str:
+               base: str | None = None, allow_dirty: bool = False, owner: str | None = None) -> str:
         goal = (goal or "").strip()
         if not goal:
             raise ValueError("a run needs a goal")
@@ -125,6 +127,9 @@ class RunManager:
             info = inspect(project, base, allow_dirty)  # refuses non-repos and dirty trees (AC-8.1/8.2)
             extra["project"] = {**info.as_dict(), "checks": repo_checks(info.root, info.base)}
         rid = self.store.create_run(spec.name, text, goal, {**opts, "demo": demo, "source": source, **extra})
+        if owner:
+            self.store.update_run(rid, owner_user=owner)
+        self.store.audit(owner, "run.started", rid, {"org": spec.name, "project": bool(project)})
         if project:
             self.store.update_run(rid, project_path=extra["project"]["root"],
                                   base=extra["project"]["base"], branch=f"cadre/{rid}")

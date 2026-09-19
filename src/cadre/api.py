@@ -18,7 +18,7 @@ import asyncio
 import ipaddress
 import json
 import re
-import secrets as pysecrets
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from importlib import resources
 from typing import Any, Literal
@@ -28,6 +28,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from pydantic import BaseModel, Field
 
 from . import __version__
+from .accounts import User
 from .config import (
     ModelConfig,
     apply_diff,
@@ -166,13 +167,31 @@ def create_app(manager: RunManager, *, token: str | None = None,
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    def auth(request: Request) -> None:
+    # the owner's CADRE_HOME/token becomes the bootstrap admin the first time we see a userless DB
+    manager.accounts.bootstrap(token)
+
+    def auth(request: Request) -> User:
         header = request.headers.get("authorization", "")
         scheme, _, value = header.partition(" ")
-        if scheme.lower() != "bearer" or not pysecrets.compare_digest(value.strip(), token):
+        if scheme.lower() != "bearer":
             raise HTTPException(401, "missing or wrong bearer token", {"WWW-Authenticate": "Bearer"})
+        user = manager.accounts.resolve(value.strip())
+        if user is None:
+            raise HTTPException(401, "missing or wrong bearer token", {"WWW-Authenticate": "Bearer"})
+        request.state.user = user
+        return user
 
-    secured = [Depends(auth)]
+    def requires(capability: str) -> Callable[..., User]:
+        def dep(user: User = Depends(auth)) -> User:
+            if not user.can(capability):
+                raise HTTPException(403, f"your role ({user.role}) may not: {capability}")
+            return user
+        return dep
+
+    secured = [Depends(auth)]                              # any signed-in user (read)
+    run_secured = [Depends(requires("run"))]
+    provider_secured = [Depends(requires("providers"))]
+    admin_secured = [Depends(requires("admin"))]
     api = APIRouter()  # mounted at /api/v1 and at the /api alias below
     store = manager.store
     home = manager.home
@@ -226,7 +245,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
     async def providers() -> list[dict[str, Any]]:
         return [provider_view(pc) for pc in home.load_config().providers]
 
-    @api.post("/providers", dependencies=secured)
+    @api.post("/providers", dependencies=provider_secured)
     async def add_provider(body: ProviderIn) -> dict[str, Any]:
         cfg = home.load_config()
         pid = body.id or body.preset
@@ -264,7 +283,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         await manager.reload()
         return {**provider_view(pc), "warning": warning}
 
-    @api.put("/providers/{pid}/models", dependencies=secured)
+    @api.put("/providers/{pid}/models", dependencies=provider_secured)
     async def set_models(pid: str, body: ModelsIn) -> dict[str, Any]:
         cfg = home.load_config()
         pc = cfg.provider(pid)
@@ -275,7 +294,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         await manager.reload()
         return provider_view(pc)
 
-    @api.post("/providers/{pid}/test", dependencies=secured)
+    @api.post("/providers/{pid}/test", dependencies=provider_secured)
     async def test_provider(pid: str) -> dict[str, Any]:
         pc = home.load_config().provider(pid)
         if pc is None:
@@ -302,7 +321,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
         flt = PRESETS[pc.preset].discover_filter if pc.preset in PRESETS else None
         return {"models": names, "suggested": [n for n in names if not flt or re.search(flt, n)]}
 
-    @api.post("/providers/{pid}/refresh", dependencies=secured)
+    @api.post("/providers/{pid}/refresh", dependencies=provider_secured)
     async def refresh(pid: str, apply: bool = False) -> dict[str, Any]:
         cfg = home.load_config()
         pc = cfg.provider(pid)
@@ -315,7 +334,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
             await manager.reload()
         return {**diff.model_dump(), "applied": apply and not diff.error}
 
-    @api.delete("/providers/{pid}", dependencies=secured)
+    @api.delete("/providers/{pid}", dependencies=provider_secured)
     async def remove_provider(pid: str) -> dict[str, Any]:
         cfg = home.load_config()
         pc = cfg.provider(pid)
@@ -391,7 +410,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
     async def validate_org(body: OrgIn) -> dict[str, Any]:
         return org_summary("draft", "draft", body.yaml)
 
-    @api.put("/orgs/{name}", dependencies=secured)
+    @api.put("/orgs/{name}", dependencies=run_secured)
     async def save_org(name: str, body: OrgIn) -> dict[str, Any]:
         if not SLUG.match(name):
             raise HTTPException(400, "org name must be lowercase letters, digits, - or _")
@@ -402,8 +421,8 @@ def create_app(manager: RunManager, *, token: str | None = None,
         return summary
 
     # ------------------------------------------------------------------ runs
-    @api.post("/runs", dependencies=secured)
-    async def start_run(body: RunIn) -> dict[str, Any]:
+    @api.post("/runs")
+    async def start_run(body: RunIn, user: User = Depends(requires("run"))) -> dict[str, Any]:
         if not body.org and not body.yaml:
             raise HTTPException(400, "give an org name or org yaml")
         try:
@@ -413,7 +432,7 @@ def create_app(manager: RunManager, *, token: str | None = None,
                                  RunOptions(allow_exec=body.allow_exec, auto_approve=body.auto_approve,
                                             privacy=body.privacy),
                                  demo=body.demo, org_yaml=body.yaml, project=body.project,
-                                 base=body.base, allow_dirty=body.allow_dirty)
+                                 base=body.base, allow_dirty=body.allow_dirty, owner=user.id)
         except OrgError as e:
             raise HTTPException(422, {"errors": e.errors}) from None
         except (FileNotFoundError, ValueError) as e:
@@ -476,12 +495,12 @@ def create_app(manager: RunManager, *, token: str | None = None,
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 
-    @api.post("/runs/{rid}/cancel", dependencies=secured)
+    @api.post("/runs/{rid}/cancel", dependencies=run_secured)
     async def cancel(rid: str) -> dict[str, Any]:
         run_or_404(rid)
         return {"cancelled": manager.cancel(rid)}
 
-    @api.post("/runs/{rid}/resume", dependencies=secured)
+    @api.post("/runs/{rid}/resume", dependencies=run_secured)
     async def resume(rid: str) -> dict[str, Any]:
         r = run_or_404(rid)
         if rid in manager.tasks or r["status"] in ACTIVE:
@@ -514,13 +533,30 @@ def create_app(manager: RunManager, *, token: str | None = None,
     async def approvals(pending: bool = True, run: str | None = None) -> list[dict[str, Any]]:
         return store.approvals(run, pending_only=pending)
 
-    @api.post("/approvals/{aid}", dependencies=secured)
-    async def decide(aid: str, body: DecisionIn) -> dict[str, Any]:
-        if store.get_approval(aid) is None:
+    @api.post("/approvals/{aid}")
+    async def decide(aid: str, body: DecisionIn, user: User = Depends(requires("approve"))) -> dict[str, Any]:
+        approval = store.get_approval(aid)
+        if approval is None:
             raise HTTPException(404, "no such approval")
         if not store.decide(aid, body.approve, body.answer):
             raise HTTPException(409, "already decided")
+        manager.accounts.audit(user, "approval.decided", aid,
+                               {"run": approval.get("run_id"), "kind": approval.get("kind"),
+                                "approved": body.approve})
         return {"id": aid, "approved": body.approve}
+
+    # ------------------------------------------------------------------ accounts (M13)
+    @api.get("/me")
+    async def me(user: User = Depends(auth)) -> dict[str, Any]:
+        return user.as_dict()
+
+    @api.get("/users", dependencies=admin_secured)
+    async def users() -> list[dict[str, Any]]:
+        return manager.accounts.list_users()
+
+    @api.get("/audit", dependencies=admin_secured)
+    async def audit(limit: int = 100) -> list[dict[str, Any]]:
+        return manager.accounts.audit_log(min(max(limit, 1), 1000))
 
     app.include_router(api, prefix="/api/v1")
     app.include_router(api, prefix="/api", include_in_schema=False)

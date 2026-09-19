@@ -41,8 +41,12 @@ credential store. `cadre serve` does not hot-reload code.
   Never print or echo one; a key pasted into chat must be rotated at the provider.
 - **The dashboard inserts model-written text with `textContent` only** — no `innerHTML`, no
   inline scripts or styles (the CSP forbids them), no third-party code.
-- **Every `/api` call needs the bearer token, and the Host header must be loopback** (ADR-010).
-  Do not add CORS or put the token in a URL query.
+- **Every `/api` call needs a bearer token, and the Host header must be loopback** (ADR-010).
+  Do not add CORS or put the token in a URL query. Since M13 a token belongs to a *user* with a
+  role (viewer/member/admin) and is stored hashed (ADR-032/033); routes are capability-checked.
+  The owner's `CADRE_HOME/token` is the bootstrap admin — don't break that backward compatibility.
+  A minted token secret is shown once and never stored; that is the caller's own access token, not
+  a provider key, so returning it once is allowed (provider keys stay write-only).
 - **A new tool must earn its tokens.** Schemas are re-sent on every call and free tiers cap
   tokens per minute (Groq: 8,000). Prefer injecting context or extending an existing tool.
 - **Presets are dated priors** (`presets.py`, `CHECKED`). Change a number only with a source,

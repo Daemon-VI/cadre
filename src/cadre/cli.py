@@ -24,6 +24,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
+from .accounts import ROLES, AccountError, Accounts
 from .clocks import DayClock, ist
 from .config import (
     Home,
@@ -56,6 +57,9 @@ runs_app = typer.Typer(help="Recent runs, and cleanup of finished project worktr
 org_app = typer.Typer(help="Organisation files.", no_args_is_help=True)
 scheduler_app = typer.Typer(help="Resume parked runs on a schedule (asks before installing).",
                             no_args_is_help=True)
+user_app = typer.Typer(help="Users and their roles (M13). Run locally, as the owner.",
+                       no_args_is_help=True)
+token_app = typer.Typer(help="API tokens for users.", no_args_is_help=True)
 
 
 def _print_version(value: bool) -> None:
@@ -74,6 +78,8 @@ app.add_typer(provider_app, name="provider")
 app.add_typer(org_app, name="org")
 app.add_typer(runs_app, name="runs")
 app.add_typer(scheduler_app, name="scheduler")
+app.add_typer(user_app, name="user")
+app.add_typer(token_app, name="token")
 con = Console(highlight=False)
 
 
@@ -1000,3 +1006,130 @@ def main() -> None:  # pragma: no cover
 
 if __name__ == "__main__":  # pragma: no cover
     main()
+
+
+# --------------------------------------------------------------------------- users and tokens (M13)
+def _accounts() -> Accounts:
+    """Accounts over the local database, with the owner bootstrapped from CADRE_HOME/token so an
+    existing single-user install always has its admin."""
+    h = home()
+    accounts = Accounts(Store(h.db_path))
+    accounts.bootstrap(h.token())
+    return accounts
+
+
+@user_app.command("list")
+def user_list() -> None:
+    """Show users and their roles."""
+    accounts = _accounts()
+    users = accounts.list_users()
+    if not users:
+        con.print("No users yet.")
+        return
+    t = Table()
+    for col in ("id", "name", "role", "status"):
+        t.add_column(col)
+    for u in users:
+        t.add_row(u["id"], u["name"] or "", u["role"], "disabled" if u["disabled"] else "active")
+    con.print(t)
+
+
+@user_app.command("add")
+def user_add(
+    uid: str = typer.Argument(..., help="a short id, e.g. bob"),
+    role: str = typer.Option("member", "--role", help=f"one of {', '.join(ROLES)}"),
+    name: str = typer.Option("", "--name", help="display name"),
+) -> None:
+    """Create a user. Give them a token with `cadre token new <id>`."""
+    try:
+        _accounts().create_user(uid, name, role)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"Added [bold]{uid}[/] ({role}). Create a token: [bold]cadre token new {uid}[/].")
+
+
+@user_app.command("role")
+def user_role(uid: str = typer.Argument(...), role: str = typer.Argument(..., help=", ".join(ROLES))) -> None:
+    """Change a user's role."""
+    try:
+        _accounts().set_role(uid, role)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"{uid} is now [bold]{role}[/].")
+
+
+@user_app.command("disable")
+def user_disable(uid: str = typer.Argument(...)) -> None:
+    """Disable a user (their tokens stop working) without deleting their history."""
+    try:
+        _accounts().set_disabled(uid, True)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"{uid} is disabled.")
+
+
+@user_app.command("enable")
+def user_enable(uid: str = typer.Argument(...)) -> None:
+    """Re-enable a disabled user."""
+    try:
+        _accounts().set_disabled(uid, False)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"{uid} is enabled.")
+
+
+@token_app.command("new")
+def token_new(
+    uid: str = typer.Argument(..., help="the user the token is for"),
+    label: str = typer.Option("", "--label", help="a note, e.g. 'laptop' or 'ci'"),
+) -> None:
+    """Mint a token for a user and print it ONCE. Only its hash is stored; it cannot be shown again.
+    Hand it to the user over a private channel; they send it as `Authorization: Bearer <token>`."""
+    try:
+        secret = _accounts().mint_token(uid, label)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"Token for [bold]{uid}[/] (shown once — copy it now):")
+    con.print(secret, soft_wrap=True)
+
+
+@token_app.command("list")
+def token_list(uid: str = typer.Argument(None, help="only this user's tokens")) -> None:
+    """Show tokens (never the secrets)."""
+    rows = _accounts().list_tokens(uid)
+    if not rows:
+        con.print("No tokens.")
+        return
+    t = Table()
+    for col in ("id", "user", "label", "status", "last used"):
+        t.add_column(col)
+    for r in rows:
+        last = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["last_used"])) if r["last_used"] else "never"
+        t.add_row(r["id"], r["user_id"], r["label"] or "", "revoked" if r["revoked"] else "live", last)
+    con.print(t)
+
+
+@token_app.command("revoke")
+def token_revoke(tid: str = typer.Argument(..., help="the token id from `cadre token list`")) -> None:
+    """Revoke a token immediately."""
+    try:
+        _accounts().revoke_token(tid)
+    except AccountError as e:
+        fail(str(e))
+    con.print(f"Revoked {tid}.")
+
+
+@app.command()
+def audit(limit: int = typer.Option(50, "--limit", help="how many recent entries")) -> None:
+    """The audit log: who did what, most recent first (M13)."""
+    rows = _accounts().audit_log(max(1, min(limit, 1000)))
+    if not rows:
+        con.print("Nothing audited yet.")
+        return
+    t = Table()
+    for col in ("when", "actor", "action", "target"):
+        t.add_column(col)
+    for r in rows:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["ts"]))
+        t.add_row(when, r["actor"], r["action"], r["target"] or "")
+    con.print(t)

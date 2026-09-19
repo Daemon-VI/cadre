@@ -118,7 +118,8 @@ anything that runs code. So: bind `127.0.0.1` by default; a random 256-bit beare
 must be a loopback name (DNS-rebinding defence); no CORS headers are ever sent; the event feed is
 read with `fetch` + headers, not `EventSource`, so the token never appears in a URL or access
 log. The static dashboard carries no data and receives the token in the URL *fragment*, which
-browsers never send to a server.
+browsers never send to a server. Since M13 that bearer token belongs to a *user* with a role, and
+is stored hashed (ADR-032, ADR-033); the single shared token became the bootstrap admin's.
 
 ### ADR-011 — Keys live in the OS credential store
 `keyring` (Windows Credential Manager, macOS Keychain, Secret Service) under service `cadre`,
@@ -522,3 +523,48 @@ can probably use the git credentials that `actions/checkout` persists by default
 environment variables, validation, the approval policy, the missing image, and the kill on
 timeout, with no Docker needed. `tests/test_containment.py` runs in the CI job `containment`
 under Docker and Podman on Ubuntu, with `python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9`; PROJECT_STATE "M12" records each outcome.
+
+### ADR-032 — Users, roles and capabilities (FR-23, M13)
+**Context.** Until M13 the API had one shared bearer token: whoever held it could do anything.
+Hosting (M16) and any team use need more than one person on one server, each bounded. **Decision.**
+An identity layer in `accounts.py` over three tables (`users`, `tokens`, `audit`). Three **fixed
+roles** — viewer ⊂ member ⊂ admin — each mapped to a set of **capabilities** (`read`, `run`,
+`approve`, `providers`, `admin`). Every write endpoint declares one capability; `auth` resolves the
+bearer token to a `User`, and a `requires(cap)` dependency returns `403` when the role lacks it.
+Reads need only a valid token. Provider keys stay server-side: only `admin` may add, edit, test or
+delete a provider, so a member uses the shared keys without seeing or managing them. A run records
+the user who started it (`owner_user`); the audit log (append-only, admin-readable) records user
+and token changes, role changes, run starts and approval decisions, each with its actor. The local
+process with no token (the CLI, the scheduler) acts as `system`, an admin-capable but distinct
+audit actor — the machine's owner already has full local power. **The last enabled admin cannot be
+disabled or demoted**, so an install can never lock itself out. **Deferred to M13 phase 2** (kept
+out on purpose so this layer ships small and testable): teams, per-team budgets and model
+allowances, approval routing to a role/team, and OIDC SSO. **Why three roles, not per-endpoint
+grants:** a small fixed lattice is auditable and covers admin/operator/observer, which is the whole
+need before teams. **Rejected.** *Per-user passwords and sessions* — a password store, reset flow,
+CSRF and cookie handling, none of which a token model needs; OIDC will bring real sign-in later.
+*Row-level ownership checks now* — deferred with teams; today any member may act on any run, which
+the audit log makes accountable.
+**Proof.** `tests/test_accounts.py`: the role lattice; viewer/member/admin against the live API
+(`403` where the capability is missing); `/me`; owner-recorded runs and the audit trail; the
+last-admin guard.
+
+### ADR-033 — API tokens are hashed at rest, and the owner token bootstraps the admin (FR-23)
+**Decision.** A token is 256 bits of `secrets.token_urlsafe`, shown **once** when minted and stored
+only as its **SHA-256** (`tokens.hash`); resolving a request hashes the presented secret and looks
+it up, so the database never holds a usable token and a leak of the DB file grants no access. A
+token carries a public id (for listing and revoking), an owner, a label, and created/last-used
+times; revoking sets a flag, and a disabled user's tokens all stop resolving. **Bootstrap:** the
+first time a userless database is opened by `create_app`, the server's effective token (the
+existing `CADRE_HOME/token`) becomes an admin `owner`'s token — hashed — so every existing
+single-user install, the dashboard, the MCP server and the extension keep authenticating with no
+change. Bootstrap is idempotent (only the first token wins). **Why SHA-256, not a slow KDF:** a
+token is 256 bits of uniform randomness, not a human password, so it is not brute-forceable and a
+memory-hard hash would only slow every request; the property that matters — the plaintext is never
+at rest — holds either way. **Minting returns the secret in the HTTP/CLI response** on purpose:
+it is the caller's own new access token, not a provider key, so the "keys never in a response"
+rule (ADR-011) does not apply to it; provider keys remain write-only.
+**Proof.** `tests/test_accounts.py`: the secret is absent from a full dump of `tokens` while its
+hash is present; a tampered secret and a revoked/disabled token do not resolve; bootstrap turns the
+owner token into the admin and is idempotent; `tests/test_cli.py` mints a token and confirms the
+secret is not in the database file.

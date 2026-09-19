@@ -41,12 +41,23 @@ CREATE TABLE IF NOT EXISTS approvals(
 CREATE TABLE IF NOT EXISTS files(
     run_id TEXT, path TEXT, version INTEGER, sha256 TEXT, bytes INTEGER, agent TEXT, ts REAL,
     PRIMARY KEY(run_id, path, version));
+CREATE TABLE IF NOT EXISTS users(
+    id TEXT PRIMARY KEY, name TEXT, role TEXT NOT NULL, disabled INTEGER DEFAULT 0, created REAL);
+CREATE TABLE IF NOT EXISTS tokens(
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, hash TEXT NOT NULL, label TEXT,
+    created REAL, last_used REAL, revoked INTEGER DEFAULT 0);
+CREATE INDEX IF NOT EXISTS tokens_hash ON tokens(hash);
+CREATE TABLE IF NOT EXISTS audit(
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, actor TEXT, action TEXT, target TEXT, detail TEXT);
+CREATE INDEX IF NOT EXISTS audit_ts ON audit(seq DESC);
 """
 
 #: v1.0 columns added to v0.1's `runs` table (ADR-016, 017, 020); all nullable or defaulted
 RUN_COLUMNS = {"project_path": "TEXT", "base": "TEXT", "branch": "TEXT", "resume_at": "REAL",
-               "active_seconds": "REAL DEFAULT 0", "privacy": "TEXT"}
-SCHEMA_VERSION = 2
+               "active_seconds": "REAL DEFAULT 0", "privacy": "TEXT",
+               # M13: the user who started the run (NULL for runs from before accounts, or CLI owner)
+               "owner_user": "TEXT"}
+SCHEMA_VERSION = 3
 
 ACTIVE = ("queued", "running", "waiting")
 STALE_AFTER = 90.0  # seconds without a heartbeat before an active run counts as interrupted
@@ -300,3 +311,59 @@ class Store:
     def files(self, rid: str) -> list[dict[str, Any]]:
         return self._all("SELECT path, MAX(version) AS versions, bytes, agent, sha256, ts "
                          "FROM files WHERE run_id=? GROUP BY path ORDER BY path", (rid,))
+
+    # ------------------------------------------------------------------ accounts (M13)
+    def create_user(self, uid: str, name: str, role: str) -> None:
+        self._x("INSERT INTO users(id, name, role, disabled, created) VALUES(?,?,?,0,?)",
+                (uid, name, role, time.time()))
+
+    def get_user(self, uid: str) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM users WHERE id=?", (uid,))
+
+    def list_users(self) -> list[dict[str, Any]]:
+        return self._all("SELECT * FROM users ORDER BY created")
+
+    def user_count(self) -> int:
+        return int(self._one("SELECT COUNT(*) AS n FROM users")["n"])
+
+    def set_user_role(self, uid: str, role: str) -> bool:
+        return self._x("UPDATE users SET role=? WHERE id=?", (role, uid)).rowcount == 1
+
+    def set_user_disabled(self, uid: str, disabled: bool) -> bool:
+        return self._x("UPDATE users SET disabled=? WHERE id=?", (1 if disabled else 0, uid)).rowcount == 1
+
+    def add_token(self, tid: str, user_id: str, token_hash: str, label: str) -> None:
+        self._x("INSERT INTO tokens(id, user_id, hash, label, created, revoked) VALUES(?,?,?,?,?,0)",
+                (tid, user_id, token_hash, label, time.time()))
+
+    def user_for_token_hash(self, token_hash: str) -> dict[str, Any] | None:
+        """The enabled user a live token belongs to, plus the token id; None otherwise."""
+        return self._one(
+            "SELECT u.id AS id, u.name AS name, u.role AS role, u.disabled AS disabled, "
+            "t.id AS token_id FROM tokens t JOIN users u ON u.id=t.user_id "
+            "WHERE t.hash=? AND t.revoked=0 AND u.disabled=0", (token_hash,))
+
+    def touch_token(self, tid: str) -> None:
+        self._x("UPDATE tokens SET last_used=? WHERE id=?", (time.time(), tid))
+
+    def list_tokens(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        sql = ("SELECT id, user_id, label, created, last_used, revoked FROM tokens")
+        if user_id:
+            return self._all(sql + " WHERE user_id=? ORDER BY created", (user_id,))
+        return self._all(sql + " ORDER BY created")
+
+    def revoke_token(self, tid: str) -> bool:
+        return self._x("UPDATE tokens SET revoked=1 WHERE id=? AND revoked=0", (tid,)).rowcount == 1
+
+    def audit(self, actor: str | None, action: str, target: str = "", detail: Any = None) -> None:
+        self._x("INSERT INTO audit(ts, actor, action, target, detail) VALUES(?,?,?,?,?)",
+                (time.time(), actor or "system", action, target, _dumps(detail) if detail is not None else None))
+
+    def audit_log(self, limit: int = 100, actor: str | None = None) -> list[dict[str, Any]]:
+        sql, args = "SELECT seq, ts, actor, action, target, detail FROM audit", ()
+        if actor:
+            sql, args = sql + " WHERE actor=?", (actor,)
+        rows = self._all(sql + " ORDER BY seq DESC LIMIT ?", (*args, limit))
+        for r in rows:
+            r["detail"] = _loads(r["detail"])
+        return rows

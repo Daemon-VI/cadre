@@ -532,6 +532,51 @@
     "summary": "Decide"
    }
   },
+  "/api/v1/audit": {
+   "get": {
+    "operationId": "audit_api_v1_audit_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 100,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Audit Api V1 Audit Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Audit"
+   }
+  },
   "/api/v1/forecast": {
    "post": {
     "operationId": "forecast_endpoint_api_v1_forecast_post",
@@ -590,6 +635,26 @@
      }
     },
     "summary": "Health"
+   }
+  },
+  "/api/v1/me": {
+   "get": {
+    "operationId": "me_api_v1_me_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Me Api V1 Me Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Me"
    }
   },
   "/api/v1/orgs": {
@@ -1572,6 +1637,29 @@
      }
     },
     "summary": "Usage"
+   }
+  },
+  "/api/v1/users": {
+   "get": {
+    "operationId": "users_api_v1_users_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Users Api V1 Users Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Users"
    }
   }
  }

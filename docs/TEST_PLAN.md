@@ -123,6 +123,13 @@ the `..` tests exercise.
 | ADR-031 a check cannot make Cadre's git run planted code | `test_project::test_cadres_commit_never_runs_what_a_check_planted_in_git` (git-directory and repointed-file, each with a control that plain git *does* run it), `test_a_check_that_changes_git_is_failed_and_the_pointer_restored` |
 | AC-22.8 containment, real containers | `tests/test_containment.py` in CI job `containment` (Docker and Podman, Ubuntu): network, writes outside `/work`, planted key, fork bomb, memory cap, timeout kill, and the M11 unit converter's tests |
 | AC-22.9 front ends show the runner | extension `format.test.ts` ("check, review and vote events"); dashboard `where()` and MCP `DATA_KEYS` by inspection |
+| AC-23.1 roles and capability checks | `test_accounts::test_roles_are_nested_least_to_most`, `test_a_viewer_can_read_but_not_run_or_manage`, `test_a_member_may_run_and_approve_but_not_manage_users_or_providers`, `test_only_an_admin_sees_users_and_the_audit_log` |
+| AC-23.2 tokens hashed, revoke/disable | `test_tokens_are_stored_hashed_never_in_the_clear`, `test_a_revoked_or_disabled_user_cannot_authenticate`; `test_cli::test_user_and_token_lifecycle_through_the_cli` |
+| AC-23.3 bootstrap from the owner token | `test_bootstrap_turns_the_owner_token_into_the_admin`; the existing API tests authenticate as the bootstrapped admin |
+| AC-23.4 `/me`, admin-only `/users` and `/audit`, no secret returned | `test_me_reports_the_caller`, `test_only_an_admin_sees_users_and_the_audit_log` |
+| AC-23.5 audit log | `test_every_account_change_is_audited`; `test_cli::test_audit_command_shows_recent_actions` |
+| AC-23.6 last admin protected | `test_the_last_enabled_admin_cannot_be_removed` |
+| M13 migration v2 -> v3 keeps rows | `test_a_v2_database_migrates_and_keeps_its_rows` |
 
 ## Live regressions (M5, 2026-09-17)
 

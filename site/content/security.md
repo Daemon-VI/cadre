@@ -90,9 +90,16 @@ must be rotated at the provider.
 The dashboard and every front end talk to `cadre serve` (ADR-010):
 
 - It binds to **`127.0.0.1`**.
-- Every `/api/v1` call needs a random 256-bit **bearer token** from `~/.cadre/token`, compared in
-  constant time. The token never goes in a URL query; the dashboard receives it in the URL
+- Every `/api/v1` call needs a random 256-bit **bearer token**. Since M13 a token belongs to a
+  **user** with a role, and is stored **hashed** (SHA-256) — the secret is shown once when minted
+  and never again. Your existing `~/.cadre/token` becomes the bootstrap admin, so a single-user
+  install is unchanged. The token never goes in a URL query; the dashboard receives it in the URL
   *fragment*, which browsers never send to a server.
+- **Roles** bound what a token may do: **viewer** reads, **member** also runs and decides
+  approvals, **admin** also manages users, tokens and providers. A request without the capability
+  gets `403`. Shared provider keys stay server-side — a member uses them without seeing them. An
+  append-only **audit log** records who did what. Manage accounts with `cadre user …` /
+  `cadre token …`; read the log with `cadre audit`.
 - It **rejects any `Host` header** that is not loopback (a defence against DNS rebinding), except
   the exact names you pass with `--allowed-host`.
 - It sends **no CORS headers** and serves a strict Content-Security-Policy. The dashboard inserts

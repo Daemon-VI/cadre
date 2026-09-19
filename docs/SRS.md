@@ -317,13 +317,40 @@ file — stays writable; ADR-031 records what that does and does not contain.
 - **AC-22.9** The dashboard, the VS Code extension's run view and approval, the CLI and MCP's
   `cadre_run_status` show where each check ran.
 
+### FR-23 Users, roles and API tokens (M13, phase 1)
+More than one person can use one Cadre server, each with their own token and a role that bounds
+what they may do. The shared provider keys stay server-side; a member uses them without seeing or
+managing them.
+- **AC-23.1** Three fixed roles, least to most: **viewer** (read only), **member** (read, start
+  and cancel/resume runs, decide approvals), **admin** (everything, plus managing users, tokens
+  and providers, and reading the audit log). A capability check gates every write endpoint; a
+  role without the capability gets `403`.
+- **AC-23.2** Each request carries `Authorization: Bearer <token>`. A token belongs to one user,
+  is stored **hashed** (SHA-256) — never in the clear — and is shown once, when minted. A
+  revoked token, or any token of a disabled user, stops authenticating (`401`).
+- **AC-23.3** **Bootstrap:** the first time the server sees a database with no users it makes an
+  admin (`owner`) whose token is the existing `CADRE_HOME/token`, so a single-user install keeps
+  working unchanged. Bootstrap is idempotent — only the first token wins.
+- **AC-23.4** `GET /me` returns the caller's id, role and capabilities. `GET /users` and
+  `GET /audit` are admin-only. Users and tokens are managed with the CLI (`cadre user …`,
+  `cadre token …`); no endpoint ever returns a token secret or a hash.
+- **AC-23.5** An append-only **audit log** records who did what: user and token changes, role
+  changes, run starts (with the owning user) and approval decisions. It is time-ordered and
+  admin-readable.
+- **AC-23.6** The **last enabled admin** cannot be disabled or demoted, so no one can lock
+  everyone out.
+- **AC-23.7 (deferred to M13 phase 2, tracked here):** teams with per-team token/run budgets and
+  per-team model allowances; approvals routed to a role or team; OIDC SSO. Until then a run's
+  approvals may be decided by any member or admin, and budgets are per-run (FR-6) and per-day
+  (FR-9), not per-team.
+
 ## 5. Non-functional requirements
 
 | ID | Requirement | Target |
 |---|---|---|
 | **NFR-1 Cost** | Runs entirely on free tiers | ₹0/month; token cost per run measured and shown |
 | **NFR-2 Footprint** | Fits this laptop (7.7 GB, ~1 GB free) | Server < 150 MB RSS; no local model needed |
-| **NFR-3 Security** | API bound to loopback, bearer token on every API call, Host header checked, no CORS; keys only in the OS store | Tests assert 401 without token and that no key value appears in events |
+| **NFR-3 Security** | API bound to loopback, a per-user bearer token (hashed at rest) on every API call, role-checked, Host header checked, no CORS; keys only in the OS store | Tests assert 401 without a token, 403 without the capability, that a token secret is never stored or returned, and that no key value appears in events |
 | **NFR-4 Safety** | Model output never becomes a shell command; checks are declared, approved, time-limited, and may run in a container with no network (FR-22) | Tests for path escape, unknown check, exec approval; every container flag, and real containment in Linux CI |
 | **NFR-5 Reliability** | Crash → resume without repeating finished work | Resume test counts provider calls |
 | **NFR-6 Observability** | Every decision explainable from the event log | Events for routing choice, fallback, wait, verdict, tally |

@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (1.1.0 released: M12 container runner + two security fixes; `v1` moved to 1.1.0 and proven on the demo repo; MCP-bypass advisory drafted for Rithik; next: M13)_
+_Last updated: 2026-09-19 (1.1.0 released; M13 phase 1 done on `main` and unreleased: users, roles, hashed tokens, RBAC, audit log; phase 2 next: teams, budgets/allowances, approval routing, OIDC)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,9 +13,44 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: 1.1.0 released 2026-09-19 (M12 + security fixes); next M13
+## Status: 1.1.0 released; M13 phase 1 (accounts) done on `main`, unreleased
 _One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D3, D5; the VS Code
 extension, D4, is built but not published); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
+
+## M13 phase 1 — users, roles and API tokens — DONE on `main`, 2026-09-19
+
+FR-23 (AC-23.1…23.6), ADR-032 (identity & RBAC) and ADR-033 (tokens hashed at rest + bootstrap).
+Scope was set with Rithik: **phase it** (identity layer now, OIDC and networked multi-user later),
+**per-user API tokens** (not passwords).
+
+- `src/cadre/accounts.py`: three fixed roles (viewer ⊂ member ⊂ admin) → capabilities
+  (`read`, `run`, `approve`, `providers`, `admin`); `Accounts` service (create/list/role/disable
+  users, mint/list/revoke tokens, resolve, audit); the last enabled admin is protected.
+- `store.py` schema **v3**: `users`, `tokens` (hash, not the secret), `audit` tables, and an
+  `owner_user` column on `runs`. Migration adds them to a v2 database without touching its rows.
+- API: `auth` resolves the bearer token to a user; a `requires(cap)` dependency returns `403`
+  when the role lacks the capability. Reads need any token; provider writes need `admin`; run
+  start/cancel/resume and org edits need `member`+; approvals need `member`+. New `GET /me`,
+  admin `GET /users`, admin `GET /audit`. Run start records the owner and audits `run.started`;
+  deciding an approval audits `approval.decided`.
+- **Bootstrap:** `create_app` turns the existing `CADRE_HOME/token` into an admin `owner` the
+  first time it sees a userless DB, so the dashboard, MCP, the extension and every existing test
+  authenticate unchanged (they pass the owner token → admin).
+- CLI: `cadre user add|list|role|disable|enable`, `cadre token new|list|revoke`, `cadre audit`.
+  `cadre token new` prints the secret once; only its SHA-256 is stored.
+
+**Verified:** 252 passed, 9 skipped; `ruff` clean. `tests/test_accounts.py` (13 tests): the role
+lattice, tokens hashed (secret absent from a full `tokens` dump, hash present), revoke/disable stop
+auth, bootstrap idempotent, the last-admin guard, the audit trail, the v2→v3 migration keeping
+rows, and RBAC over the live API (viewer 403 on run/manage, member 403 on users/providers, admin
+sees users+audit, no secret ever returned). `tests/test_cli.py` (+3): the user/token lifecycle
+(secret not in the DB file) and `cadre audit`. The OpenAPI snapshot gained only `/me`, `/users`,
+`/audit`.
+
+**Not in this phase (M13 phase 2):** teams; per-team token/run budgets and model allowances;
+approvals routed to a role/team (today any member/admin may decide any run's approval — the audit
+log makes it accountable); OIDC SSO; row-level run ownership enforcement. The dashboard and the
+VS Code extension don't surface users/roles yet.
 
 ## 1.1.0 release (2026-09-19, `PROMPT_M12.md`)
 
@@ -240,7 +275,9 @@ Also noted: after a Reject, the engine asks again on the agent's next `run_check
 - Checks run as the owner unless the org gives them `runner: docker|podman` (M12, ADR-031); a
   container still shares the kernel and can change the workspace. Use `--allow-exec` only for
   goals you trust.
-- Single user. The token is one shared secret; no roles, no per-team budgets yet (M13).
+- Multi-user identity landed in M13 phase 1: users, roles (viewer/member/admin), hashed per-user
+  tokens, RBAC and an audit log. Still single-tenant in effect until phase 2 adds teams, per-team
+  budgets and model allowances, approval routing, and OIDC SSO.
 - Budgets are cumulative across resumes and parks (M10); `resume --add-calls` raises them.
 - Starlette warns that its TestClient's `httpx` backend is deprecated; harmless for now.
 
@@ -603,8 +640,11 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 release").
 
 ## Where to pick up
-1. **Next: `ROADMAP.md` M13**, multi-user organisations.
+1. **Next: `ROADMAP.md` M13 phase 2** — teams, per-team token/run budgets and model allowances,
+   approvals routed to a role/team, and OIDC SSO. Build on `accounts.py` (phase 1). A 1.2.0 release
+   carrying M13 phase 1 (the accounts layer) needs Rithik's yes; it is a new feature, not a fix.
 2. Waiting on Rithik, each his call:
+   - **Release 1.2.0** to ship the accounts layer (M13 phase 1), or hold it until phase 2 is done.
    - **Publish the security advisory** for the MCP `allow_exec` bypass. Draft text is in
      `docs/SECURITY_ADVISORY_DRAFT.md`: affected 1.0.0/1.0.1, fixed 1.1.0. Create it under the
      repo's Security → Advisories (GHSA); publishing is his act.
@@ -625,7 +665,8 @@ Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 r
 4. Done, for the record: keys rotated (a new key goes in with `provider key <id>`, not `provider
    add`); the scheduler job is installed (every 30 min; remove with `cadre scheduler uninstall`);
    the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0,
-   1.0.1 and 1.1.0 releases; M12; `v1` moved to 1.1.0 (proven on the demo repo, PR #9).
+   1.0.1 and 1.1.0 releases; M12; `v1` moved to 1.1.0 (proven on the demo repo, PR #9); M13 phase 1
+   (the accounts layer) on `main`.
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`

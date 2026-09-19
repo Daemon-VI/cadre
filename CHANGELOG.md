@@ -3,6 +3,23 @@
 All dates are 2026. Numbers come from `docs/PROJECT_STATE.md`, where each one is traced to a test,
 observed output, or a dated source.
 
+## Unreleased
+
+### Added — users, roles and API tokens (M13 phase 1, FR-23)
+- More than one person can share one Cadre server. Each has a bearer token and a role: **viewer**
+  (read only), **member** (read, run, decide approvals) or **admin** (everything, plus managing
+  users, tokens and providers, and the audit log). Every write endpoint is capability-checked; a
+  role without the capability gets `403`.
+- Tokens are stored **hashed** (SHA-256) and shown once when minted; a revoked token, or any token
+  of a disabled user, stops working. The existing `CADRE_HOME/token` becomes the bootstrap admin,
+  so single-user installs are unchanged.
+- `cadre user add|list|role|disable|enable`, `cadre token new|list|revoke`, and `cadre audit`
+  manage accounts locally. `GET /api/v1/me`, and admin-only `GET /users` and `GET /audit`.
+- An append-only **audit log** records user/token/role changes, run starts (with the owning user)
+  and approval decisions. The last enabled admin cannot be disabled or demoted.
+- Shared provider keys stay server-side: only an admin manages providers; a member uses them.
+- Deferred to M13 phase 2: teams, per-team budgets and model allowances, approval routing, OIDC SSO.
+
 ## 1.1.0 — 2026-09-19
 
 ### Added — a container runner for checks (M12, FR-22)
