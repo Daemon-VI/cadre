@@ -8,8 +8,9 @@ Cadre is a local tool, and everything it does runs with **your** permissions on 
   `python -m pytest -q`. The model can only choose a check by name and never supplies a command.
   Checks run in the run's workspace with a timeout, capped output, and an environment stripped of
   anything that looks like a key, token or password. They still run as you and are **not
-  sandboxed**, so they need `--allow-exec` or your explicit approval. A container runner is
-  roadmap item M12.
+  sandboxed** by default, so they need `--allow-exec` or your explicit approval. Since 1.1.0 a
+  check can instead run in a container (`runner: docker|podman`); ADR-031 says what that does and
+  does not contain.
 - **File tools** are confined to the run's workspace. Absolute paths, `..`, symlinks, drive
   letters, device names and alternate data streams are refused. In project mode, agents work in
   a git worktree on a new `cadre/<run-id>` branch and cannot write under `.cadre/`. Cadre never
@@ -27,7 +28,8 @@ Cadre is a local tool, and everything it does runs with **your** permissions on 
   with `--allowed-host`, sends no CORS headers, and serves a strict Content-Security-Policy.
 - Front ends (the MCP server, the VS Code extension, the GitHub Action) are clients of that API.
   None of them can grant an approval that lets model-written code run
-  ([ADR-027](docs/ARCHITECTURE.md), [ADR-029](docs/ARCHITECTURE.md)).
+  ([ADR-027](docs/ARCHITECTURE.md), [ADR-029](docs/ARCHITECTURE.md)). **In 1.0.0 and 1.0.1, MCP's
+  `cadre_start_run` could set `allow_exec` and so skip the exec approval; fixed in 1.1.0.**
 
 ## Reporting a vulnerability
 

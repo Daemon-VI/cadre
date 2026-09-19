@@ -12,10 +12,10 @@ extension, the container) calls the same engine.
 
 | How | Command | Status |
 |---|---|---|
-| Run without installing | `uvx cadre-ai <command>` | 1.0.0 on PyPI |
-| Install as a tool | `pipx install cadre-ai`, `uv tool install cadre-ai` or `pip install cadre-ai` | 1.0.0 on PyPI |
+| Run without installing | `uvx cadre-ai <command>` | 1.0.1 on PyPI |
+| Install as a tool | `pipx install cadre-ai`, `uv tool install cadre-ai` or `pip install cadre-ai` | 1.0.1 on PyPI |
 | From a clone | `git clone https://github.com/Daemon-VI/cadre && cd cadre && uv sync`, then `uv run cadre <command>` | works |
-| Standalone build, no Python | see [Containers and downloads](containers.html) | 1.0.0 on the GitHub Release |
+| Standalone build, no Python | see [Containers and downloads](containers.html) | 1.0.1 on the GitHub Release |
 
 Cadre needs Python 3.12 or newer (uv installs one for you). `cadre --version` prints the version.
 Its state lives in `~/.cadre/` (set `CADRE_HOME` to put it elsewhere): `config.yaml` (providers
@@ -53,6 +53,7 @@ cadre run project-finisher "Make the failing tests pass" --project ./repo --allo
 | Option | Does |
 |---|---|
 | `--allow-exec` | Checks run the code the agents wrote without asking first. **Not a sandbox.** Without it, the first check asks you |
+| `--allow-container-exec` | Checks that run in a container (`runner: docker` or `podman`, no network) run without asking; checks that run as you still ask. See the [security model](security.html) |
 | `--project PATH` | Work on an existing git repository, in a worktree on a new branch `cadre/<run-id>` |
 | `--base B` | The branch or commit to start from (default `HEAD`) |
 | `--allow-dirty` | Start from `HEAD` even if the working tree has uncommitted changes (a dirty tree is refused otherwise) |

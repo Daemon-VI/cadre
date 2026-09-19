@@ -125,7 +125,7 @@ Source: <https://antigravity.google/docs/mcp>.
 |---|---|
 | `cadre_list_orgs` | Lists the organisations Cadre can run: the built-in templates and your own |
 | `cadre_forecast` | Whether a run fits in today's free quota (calls, tokens, waits or days) and the basis of the estimate |
-| `cadre_start_run` | Starts a run, in project mode on the folder above by default. It may ask for `allow_exec`, but declared checks still run only once a human approves, and it can never auto-approve |
+| `cadre_start_run` | Starts a run, in project mode on the folder above by default. Declared checks run only once a human approves them, and it can never auto-approve. (1.0.0 and 1.0.1 accepted `allow_exec`, which skipped that approval; since 1.1 the tool has no such parameter) |
 | `cadre_run_status` | A run's status, its latest events, the files it changed, its branch, and anything it is waiting for |
 | `cadre_usage` | Requests and tokens per provider and model, each daily cap's share, and the models cooling down or out of quota |
 

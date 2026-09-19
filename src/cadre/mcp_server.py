@@ -32,8 +32,8 @@ STATUS_EVENTS = 12
 RESULT_CHARS = 2000
 START_TIMEOUT = 30.0
 CREATE_BREAKAWAY_FROM_JOB = 0x01000000  # Windows process-creation flag
-DATA_KEYS = ("text", "verdict", "status", "error", "reason", "name", "passed", "model", "tally",
-             "resume_at_ist", "detail", "summary", "branch")
+DATA_KEYS = ("text", "verdict", "status", "error", "reason", "name", "passed", "runner", "image", "model",
+             "tally", "resume_at_ist", "detail", "summary", "branch")
 
 
 def format_event(e: dict[str, Any]) -> str:
@@ -203,16 +203,17 @@ def build_server(home: Home, port: int | None = None, api: Api | None = None) ->
     @mcp.tool()
     async def cadre_start_run(org: str, goal: str,
                               roots: Annotated[ListRootsResult, Resolve(workspace_roots)],
-                              project: str | None = None, allow_exec: bool = False) -> dict[str, Any]:
+                              project: str | None = None) -> dict[str, Any]:
         """Start a run. With project mode (`project-finisher`, or any org given a project), Cadre
         works on a new branch `cadre/<run-id>` in a git worktree and never touches the user's
         working tree. `project` defaults to the editor's workspace folder (a git repository); pass
-        "" to build in a fresh workspace instead. `allow_exec` lets declared checks run once a human approves.
-        Returns the run id; poll it with cadre_run_status."""
+        "" to build in a fresh workspace instead. Declared checks run only after the user approves
+        them. Returns the run id; poll it with cadre_run_status."""
         if project is None:
             project = default_project(roots)
-        body: dict[str, Any] = {"org": org, "goal": goal, "allow_exec": allow_exec,
-                                "auto_approve": False}  # never over MCP (ADR-027)
+        # never over MCP (ADR-027): the API's allow_exec skips the exec approval, and the caller
+        # is a model. 1.0.0 and 1.0.1 forwarded it, so a model could run checks unapproved.
+        body: dict[str, Any] = {"org": org, "goal": goal, "allow_exec": False, "auto_approve": False}
         if project:
             body["project"] = project
         started = await api.call("POST", "/runs", json=body)

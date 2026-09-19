@@ -3,6 +3,42 @@
 All dates are 2026. Numbers come from `docs/PROJECT_STATE.md`, where each one is traced to a test,
 observed output, or a dated source.
 
+## Unreleased (1.1.0)
+
+### Added — a container runner for checks (M12, FR-22)
+- A check may say `runner: docker` or `runner: podman` with an `image:` pinned by digest. It then
+  runs in a throwaway container. The run's workspace is the only mount (at `/work`); there is no
+  network, the root filesystem is read-only with a small `/tmp`, every capability is dropped,
+  privilege escalation is off, the user is not root, and processes, memory and CPU are capped
+  (`pids_limit`, `memory`, `cpus`; defaults 256, 512m and 1). Only the variables named in the
+  check's `env:` pass through, by name, and credential-like names never do. The subprocess runner
+  stays the default.
+- Cadre never pulls an image: a missing one fails the check with the exact `docker pull` command.
+  An unpinned image needs `allow_unpinned: true`, and the approval prompt says so.
+- `--allow-container-exec` (API `"allow_exec": "container_only"`) runs container checks without
+  asking and still asks before any check that runs as you.
+- Where each check runs is shown: the exec approval lists the runtime, image and limits per
+  check; the dashboard and the VS Code extension show the runtime and image and "no network"; the
+  CLI shows the runtime; MCP's `cadre_run_status` carries the runner and image.
+- Tested against real containers under Docker and Podman in Linux CI: a check could not reach
+  the network, write outside `/work`, read a key planted in the host environment, fork past its
+  pids limit or allocate past its memory cap, and one that outlived its timeout was killed and
+  removed. What a container does not protect against is in ADR-031.
+
+### Fixed — security
+- MCP's `cadre_start_run` forwarded an `allow_exec` argument, and `allow_exec` skips the exec
+  approval. So a model, or a prompt injection in the host's context, could start a run whose
+  checks executed model-written code with nobody approving, although ADR-027 said checks would
+  still wait for a human. The tool no longer takes the argument, and tests check that nothing sent
+  over MCP skips the approval. Affects 1.0.0 and 1.0.1.
+- In project mode Cadre runs `git add -A` and `git commit` in the worktree on the host after every
+  step. The worktree's `.git` file lives in the workspace, which a check can write, so a check
+  could repoint it or replace it with a directory carrying a hostile `core.fsmonitor`/hook and make
+  that commit run a command outside any container, as the owner. Cadre's git now resolves the real
+  git dir from the owner's repository, passes it with `--git-dir`/`--work-tree`, restores the
+  `.git` pointer before its own git and after every check, and fails a check that changed it. Found
+  by the claim-auditor while building M12; it never shipped.
+
 ## 1.0.1 — 2026-09-19
 
 Fixes found by looking at the dashboard on screen for the first time and by the first run of the

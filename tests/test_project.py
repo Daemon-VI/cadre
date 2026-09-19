@@ -191,3 +191,81 @@ workflow: {manager: boss, workers: [w], task: "{goal}"}
     assert not (home.runs_dir / rid / "workspace" / ".git").exists()
     assert f"cadre/{rid}" in sh(repo, "branch", "--list", "cadre/*")
     assert m.cleanup_candidates() == []
+
+
+# ---------------------------------------------------------------- ADR-031: a check can write .git
+# A check (in a container or not) can write anything in the workspace, the worktree's `.git` file
+# included. Cadre's own git runs on the host after every step, so it must never follow what the
+# check left there: a planted git config would run its command as the owner, outside any container.
+def _worktree(repo: Path, tmp_path: Path) -> Path:
+    from cadre.project import ensure_worktree
+
+    ws = tmp_path / "run" / "workspace"
+    ensure_worktree(str(repo), "main", "cadre/t1", ws)
+    return ws
+
+
+def _hostile(gitdir: Path, marker: Path) -> None:
+    """What a check can plant: a git config and a hook that each run a command."""
+    cmd = f'echo pwned > "{marker.as_posix()}"'
+    hooks = gitdir / "hooks"
+    hooks.mkdir(exist_ok=True)
+    (hooks / "pre-commit").write_text(f"#!/bin/sh\n{cmd}\n", newline="\n")
+    (hooks / "pre-commit").chmod(0o755)
+    for key, value in (("core.fsmonitor", cmd), ("core.hooksPath", hooks.as_posix())):
+        subprocess.run(["git", "config", "-f", str(gitdir / "config"), key, value], check=True)
+
+
+def _plant(ws: Path, how: str, marker: Path) -> None:
+    if how == "git directory":        # replace the .git file with a repository of the check's own
+        (ws / ".git").unlink()
+        subprocess.run(["git", "init", "-q", str(ws)], check=True, capture_output=True)
+        _hostile(ws / ".git", marker)
+    else:                             # keep a .git file, but point it at a planted gitdir
+        subprocess.run(["git", "init", "-q", "--bare", str(ws / ".evil")], check=True, capture_output=True)
+        _hostile(ws / ".evil", marker)
+        (ws / ".git").unlink()        # a check truncates it; on Windows a .git file resists truncation
+        (ws / ".git").write_text("gitdir: .evil\n")
+    (ws / "changed.txt").write_text("work")
+
+
+@pytest.mark.parametrize("how", ["git directory", "repointed file"])
+def test_cadres_commit_never_runs_what_a_check_planted_in_git(repo, tmp_path, how):
+    from cadre.project import commit_all, worktree_git_dir
+
+    ws = _worktree(repo, tmp_path)
+    real = worktree_git_dir(str(repo), ws)
+    marker = tmp_path / "PWNED"
+    _plant(ws, how, marker)
+    # control: plain git in the tampered worktree does run the planted command
+    subprocess.run(["git", "add", "-A"], cwd=ws, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "x"], cwd=ws, capture_output=True)
+    if not marker.exists():
+        pytest.skip("this git ran neither core.fsmonitor nor the hook; the attack is not reproducible here")
+    marker.unlink()
+    sha = commit_all(str(repo), ws, "cadre(test): after a hostile check")
+    assert not marker.exists(), f"{how}: Cadre's git ran a command the check planted"
+    assert (ws / ".git").is_file() and worktree_git_dir(str(repo), ws) == real
+    assert sha and sh(repo, "rev-parse", "cadre/t1").strip() == sha
+    assert "changed.txt" in sh(repo, "show", "--name-only", "--format=", "cadre/t1")
+
+
+async def test_a_check_that_changes_git_is_failed_and_the_pointer_restored(home, repo):
+    org = ORG.replace("workflow:", """checks:
+  - {name: tamper, command: ["{python}", "-c", "import os; os.remove('.git'); open('.git','w').write('gitdir: .evil')"]}
+workflow:""", 1)
+    script = by_agent({
+        "eng": [call("edit_file", path="calc.py", old="return a - b", new="return a + b"), "fixed add()"],
+        "rev": [APPROVE],
+    })
+    router, *_ = two_family_router(script)
+    m = RunManager(home, router=router)
+    rid = m.create("", "make the tests pass", RunOptions(allow_exec=True), org_yaml=org, project=str(repo))
+    run = await m.execute(rid)
+    checks = {e["data"]["name"]: e["data"] for e in m.store.events(rid, kinds=("check.finished",))}
+    assert checks["tamper"]["passed"] is False and "put it back" in checks["tamper"]["note"]
+    assert checks["unit"]["passed"] is True
+    assert m.store.events(rid, kinds=("project.git_restored",))
+    ws = home.runs_dir / rid / "workspace"
+    assert (ws / ".git").read_text().startswith("gitdir:") and ".evil" not in (ws / ".git").read_text()
+    assert run["status"] in ("unapproved", "failed", "succeeded")

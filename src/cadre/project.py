@@ -8,6 +8,7 @@ pushes, force-pushes, rewrites history, or deletes a branch it did not create.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -97,10 +98,63 @@ def is_worktree(workspace: Path) -> bool:
     return (workspace / ".git").is_file()
 
 
+# The workspace is writable by checks, and a container check writes it from inside the container
+# (ADR-031). A `.git` file or directory planted there could make git run a command of the check's
+# choosing (core.fsmonitor, core.hooksPath, …) the next time Cadre runs git in the worktree, on the
+# host and as the owner. So Cadre never lets git discover the repository from the workspace: it
+# finds the worktree's administrative directory from the owner's repository, passes it with
+# --git-dir, and puts the workspace's `.git` file back whenever anything changed it.
+def worktree_git_dir(root: str, workspace: Path) -> Path:
+    """The run worktree's administrative directory, found from the owner's repository."""
+    common = git(["rev-parse", "--path-format=absolute", "--git-common-dir"], root).stdout.strip()
+    want = (Path(workspace) / ".git").resolve()
+    for d in sorted((Path(common) / "worktrees").glob("*")):
+        try:
+            if Path((d / "gitdir").read_text(encoding="utf-8").strip()).resolve() == want:
+                return d
+        except OSError:
+            continue
+    raise ProjectError(f"{workspace} is not a registered worktree of {root}")
+
+
+def _force_rmtree(path: Path) -> None:
+    def onerror(func, p, exc):  # git objects are read-only; clear the bit and retry (Windows)
+        import os
+        import stat
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+    shutil.rmtree(path, onerror=onerror)
+
+
+def restore_pointer(root: str, workspace: Path) -> bool:
+    """Put the worktree's `.git` file back if anything changed it. True when it had to."""
+    gd = worktree_git_dir(root, workspace)
+    dot = Path(workspace) / ".git"
+    try:
+        text = dot.read_text(encoding="utf-8") if dot.is_file() and not dot.is_symlink() else ""
+        if text.startswith("gitdir:") and Path(text[7:].strip()).resolve() == gd.resolve():
+            return False
+    except OSError:
+        pass
+    if dot.is_dir() and not dot.is_symlink():
+        _force_rmtree(dot)
+    elif dot.exists() or dot.is_symlink():
+        dot.unlink()
+    dot.write_text(f"gitdir: {gd.as_posix()}\n", encoding="utf-8")
+    return True
+
+
+def worktree_git(root: str, workspace: Path, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+    """git on the run's worktree, never trusting anything named `.git` inside the workspace."""
+    restore_pointer(root, workspace)
+    gd = worktree_git_dir(root, workspace)
+    return git(["--git-dir", str(gd), "--work-tree", str(workspace), *args], workspace, check=check)
+
+
 def ensure_worktree(root: str, base: str, branch: str, workspace: Path) -> str:
     """Create the run's worktree, or reuse it on resume. Returns 'created' or 'reused'."""
     if is_worktree(workspace):
-        current = git(["rev-parse", "--abbrev-ref", "HEAD"], workspace).stdout.strip()
+        current = worktree_git(root, workspace, ["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
         if current != branch:
             raise ProjectError(f"{workspace} is on {current}, expected {branch}")
         return "reused"
@@ -117,13 +171,13 @@ def ensure_worktree(root: str, base: str, branch: str, workspace: Path) -> str:
     return "created"
 
 
-def commit_all(workspace: Path, message: str) -> str | None:
+def commit_all(root: str, workspace: Path, message: str) -> str | None:
     """Commit everything that changed in the worktree. None when there was nothing to commit."""
-    git(["add", "-A"], workspace)
-    if git(["diff", "--cached", "--quiet"], workspace, check=False).returncode == 0:
+    worktree_git(root, workspace, ["add", "-A"])
+    if worktree_git(root, workspace, ["diff", "--cached", "--quiet"], check=False).returncode == 0:
         return None
-    git(["commit", "-q", "-m", message], workspace)
-    return git(["rev-parse", "HEAD"], workspace).stdout.strip()
+    worktree_git(root, workspace, ["commit", "-q", "-m", message])
+    return worktree_git(root, workspace, ["rev-parse", "HEAD"]).stdout.strip()
 
 
 def diff_stat(root: str, base: str, branch: str) -> str:
@@ -146,6 +200,10 @@ def review_commands(root: str, base: str, branch: str, workspace: Path) -> dict[
 
 def remove_worktree(root: str, workspace: Path) -> tuple[bool, str]:
     """Remove a finished run's worktree without --force; the branch stays for review."""
+    try:
+        restore_pointer(root, workspace)
+    except ProjectError:
+        pass
     if not is_worktree(workspace):
         return False, "not a worktree (already removed?)"
     p = git(["worktree", "remove", str(workspace)], root, check=False)

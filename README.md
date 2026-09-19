@@ -45,10 +45,13 @@ tables).
 
 ## Limitations
 
-- **Checks are not sandboxed.** A check runs code the agents wrote, as you, on your machine. The
-  model can only name a check declared in the org file, never supply a command, and checks need
-  `--allow-exec` or your approval. Don't give an untrusted goal to an org with checks. A
-  container runner is roadmap item M12.
+- **Checks run as you unless you contain them.** By default a check runs code the agents wrote,
+  as you, on your machine. The model can only name a check declared in the org file, never supply
+  a command, and checks need `--allow-exec` or your approval. A check can instead run in a
+  container with no network (`runner: docker` or `podman`), but a container shares the host's
+  kernel and the workspace stays writable: see ADR-031 for what that does not protect. Don't give
+  an untrusted goal to an org whose checks run as you, or, in project mode, to one whose checks
+  run in a container.
 - **No run has parked live yet.** Parking on a daily limit and resuming after the reset is
   verified with a fake clock. A real interrupted run did resume the next day without re-billing.
 - **Review quality is not measured.** Only the routing of reviewers to another model family is.
@@ -166,6 +169,20 @@ checks:
   - name: tests
     command: ["{python}", "-m", "pytest", "-q"]
 ```
+
+or, to run them in a container with no network (`{python}` is then the image's `python3`):
+
+```yaml
+checks:
+  - name: tests
+    command: ["{python}", "-m", "unittest", "-v"]
+    runner: docker                     # or podman
+    image: "python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9"
+    memory: 512m                       # defaults: 512m, 1 CPU, 256 processes
+    env: [LANG]                        # passed by name; key-like names are refused
+```
+
+Cadre never pulls the image: the first run tells you the `docker pull` command to run.
 
 The run ends by printing the branch's commits, `git diff --stat`, and the commands to review or
 discard it. `cadre runs cleanup` removes finished worktrees and keeps their branches.
@@ -311,11 +328,18 @@ Python classes and functions.
 
 ## Safety
 
-- **Checks run code the agents wrote, as you, on your machine. This is not a sandbox.** The
-  model can only name a check declared in the org file; it never supplies a command. Checks run
-  in the run's workspace with a timeout, capped output, and an environment stripped of anything
-  that looks like a key, token or password. They need `--allow-exec` or your approval. Don't
-  give an untrusted goal to an org with checks; a container runner is on the roadmap.
+- **By default, checks run code the agents wrote, as you, on your machine. That is not a
+  sandbox.** The model can only name a check declared in the org file; it never supplies a
+  command. Checks run in the run's workspace with a timeout, capped output, and an environment
+  stripped of anything that looks like a key, token or password. They need `--allow-exec` or
+  your approval.
+- **A check can run in a container instead** (`runner: docker` or `runner: podman`, with an
+  image pinned by digest): the workspace is its only mount, with no network, a read-only root
+  filesystem, no capabilities and capped processes, memory and CPU. Cadre never pulls the image.
+  `--allow-container-exec` lets such checks run without asking while checks that run as you
+  still ask. It does not protect against a kernel exploit, and the check can still change anything
+  in the workspace — including, in project mode, the worktree's `.git` file, which Cadre's own git
+  now refuses to trust (ADR-031).
 - File tools cannot leave the run workspace (absolute paths, `..`, symlinks, drive letters,
   device names and alternate data streams are refused).
 - The API listens on 127.0.0.1, requires a bearer token (`~/.cadre/token`) on every call,

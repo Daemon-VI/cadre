@@ -79,3 +79,34 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv run --no-project python tools/wheel_smoke.py
+
+  containment:
+    # FR-22 / AC-22.8: hostile checks in real containers must fail to reach the network, write
+    # outside /work, read a planted key, fork past the pids limit or allocate past the memory cap;
+    # a normal check must pass. Linux only: GitHub's Ubuntu runners have Docker and Podman.
+    name: containment · ${{ matrix.runtime }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Pull the pinned test image (Cadre never pulls one itself)
+        run: |
+          ${{ matrix.runtime }} --version
+          ${{ matrix.runtime }} pull "$(uv run python -c 'from tests.test_containment import IMAGE; print(IMAGE)')"
+      - name: Containment tests
+        env:
+          CADRE_CONTAINMENT: ${{ matrix.runtime }}
+          CADRE_CONTAINMENT_REPORT: ${{ runner.temp }}/containment.jsonl
+        run: uv run pytest -q -rA tests/test_containment.py
+      - name: Outcomes
+        if: always()
+        run: |
+          { echo "### ${{ matrix.runtime }}"; echo '```'; cat "$RUNNER_TEMP/containment.jsonl" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/containment.jsonl" || true

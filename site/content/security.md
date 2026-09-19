@@ -9,11 +9,11 @@ Cadre is a local tool. Everything it does runs with **your** permissions on **yo
 page says what that means, and where the lines are. The decisions behind it are the ADRs in
 [`docs/ARCHITECTURE.md`](https://github.com/Daemon-VI/cadre/blob/main/docs/ARCHITECTURE.md).
 
-## Checks are not sandboxed
+## Checks run as you, unless you put them in a container
 
 A *check* is a command declared in the org file, such as `python -m pytest -q`. Checks decide
-whether work passes, and they **run code the agents wrote, as you, on your machine. This is not a
-sandbox.**
+whether work passes, and by default they **run code the agents wrote, as you, on your machine.
+That is not a sandbox.**
 
 What does hold (ADR-006):
 
@@ -25,8 +25,41 @@ What does hold (ADR-006):
   too).
 - They need `--allow-exec`, or your explicit approval before the first one runs.
 
-So: **don't give an untrusted goal to an org with checks.** A container runner for checks is
-roadmap item M12.
+### Checks in a container (since M12)
+
+A check can say `runner: docker` or `runner: podman` and name an image pinned by digest
+(`name@sha256:…`). It then runs in a throwaway container:
+
+- **Only the run's workspace is mounted**, at `/work`. Your home folder, Cadre's own state, your
+  repository's `.git` and the Docker socket are not.
+- **No network** (`--network none`), a **read-only** root filesystem with a small `/tmp`, **every
+  capability dropped**, no privilege escalation, and a **non-root user**.
+- **Capped** processes, memory (no swap) and CPU, set per check; the timeout kills the container.
+- **Nothing from your environment** except the variables the check names in `env:`, passed by
+  name (Cadre adds only `HOME=/tmp` and `PYTHONDONTWRITEBYTECODE=1`); names that look like keys
+  are refused. The image's own variables are present.
+- **Cadre never pulls an image.** A missing one fails the check with the exact `docker pull` to run.
+
+Checked with real containers under Docker and Podman in CI: a check could not reach the network,
+write outside `/work`, read a key planted in the host's environment, fork past its process limit
+or allocate past its memory cap, and one that outlived its timeout was killed.
+
+**What a container does not protect against** (ADR-031):
+
+- It **shares the host's kernel**. A kernel or runtime exploit escapes it. With Docker on Linux
+  that means root; Docker Desktop on Windows and macOS adds a VM in between.
+- **The workspace is writable.** A check can change anything in it, including files you might
+  later run yourself (a `Makefile`, a `conftest.py`, an editor task). Review the branch before you
+  run anything from it. In project mode the worktree's `.git` **file** is in the workspace too; a
+  check that rewrites it once made Cadre's own `git commit` (which runs on the host) execute a
+  planted command. That is **fixed**: Cadre's git ignores the workspace's `.git`, restores it, and
+  fails a check that changed it (ADR-031). Nothing here merges itself — you review the branch.
+- Anything already in the workspace, such as a committed `.env`, is readable.
+- The image is trusted: a digest pins it, but does not make it safe. Disk use is not capped.
+
+By default a container check still asks for your approval, and the prompt says where each check
+runs. `--allow-container-exec` lets container checks run without asking; checks that run as you
+still ask. **Don't give an untrusted goal to an org whose checks run as you.**
 
 ## Files and your repository
 
@@ -78,9 +111,10 @@ contain it, and the extension never passes it to a webview or stores it in setti
 (ADR-027): neither an *exec* approval (it lets model-written code run) nor a gate. The caller is
 itself a model, and a gate that one model can open for another model's work is not a gate. Prompt
 injection in the editor's context can call any tool, so the tools can spend your free quota
-(bounded by budgets) but cannot approve, add providers or read keys. `cadre_start_run` may request
-`allow_exec`, but the checks still wait for a human. A waiting run tells you to use
-`cadre approve <id>` or the dashboard.
+(bounded by budgets) but cannot approve, add providers or read keys. `cadre_start_run` sets
+neither `allow_exec` nor `auto_approve`, so checks wait for a human. (In 1.0.0 and 1.0.1 the tool
+forwarded an `allow_exec` argument that skipped the exec approval — a model could run checks
+unapproved; fixed in 1.1.0.) A waiting run tells you to use `cadre approve <id>` or the dashboard.
 
 ## Who may trigger the GitHub Action
 

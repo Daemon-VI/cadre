@@ -65,11 +65,14 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# tests/fixtures holds projects that checks run (the M11 capstone's output, kept verbatim)
+norecursedirs = ["tests/fixtures"]
 asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

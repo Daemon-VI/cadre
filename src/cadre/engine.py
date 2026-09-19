@@ -26,12 +26,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from . import containers
 from .agent import AgentResult, ask_json, run_agent, schema_text
 from .clocks import DayClock, human
 from .org import (
     AgentSpec,
     ApprovalStep,
     Budget,
+    CheckSpec,
     CouncilStep,
     ManagerStep,
     OrgSpec,
@@ -40,7 +42,7 @@ from .org import (
     SequenceStep,
     render,
 )
-from .project import PROTECTED, ProjectError, commit_all
+from .project import PROTECTED, ProjectError, commit_all, restore_pointer
 from .providers import ProviderError
 from .router import CallRequest, CallResult, QuotaParked, Router
 from .store import Store
@@ -67,9 +69,19 @@ class StepFailed(Exception):
     pass
 
 
+#: `allow_exec` may be True (every check runs without asking) or this: only checks that run in a
+#: container with no network skip the approval; checks that run as the owner still ask (ADR-031)
+CONTAINER_ONLY = "container_only"
+
+
+def allow_exec_option(value: Any) -> bool | str:
+    """A stored or submitted `allow_exec`, read back as True, False or CONTAINER_ONLY."""
+    return CONTAINER_ONLY if value == CONTAINER_ONLY else bool(value)
+
+
 @dataclass
 class RunOptions:
-    allow_exec: bool = False
+    allow_exec: bool | str = False
     auto_approve: bool = False
     privacy: str | None = None  # overrides the org's `privacy` when set
 
@@ -173,7 +185,8 @@ class RunContext:
         self.notes: list[tuple[str, str]] = []
         #: every model family each agent has used in this run (ADR-004)
         self.families: dict[str, list[str]] = {}
-        self._exec_approved = self.options.allow_exec
+        self._exec_approved = self.options.allow_exec is True
+        self._containers = 0
         self.private = (self.options.privacy or org.privacy) == "private"
         self._last_beat = 0.0
         for e in store.events(run_id, limit=100_000, kinds=("note", "agent.call")):
@@ -305,7 +318,7 @@ class RunContext:
             message = message[:71].rsplit(" ", 1)[0] + "…"
         async with self._commit_lock:
             try:
-                sha = await asyncio.to_thread(commit_all, self.workspace.root, message)
+                sha = await asyncio.to_thread(commit_all, self.project["root"], self.workspace.root, message)
             except ProjectError as e:
                 self.emit("project.commit_failed", step=path, error=str(e))
                 return
@@ -325,30 +338,58 @@ class RunContext:
         self.notes.append((agent, text))
         self.emit("note", agent=agent, step=step, text=text)
 
+    def exec_prompt(self) -> str:
+        """Every declared check as it will actually run ({python} resolved) and where, so the
+        human approves exactly what executes (ADR-006, ADR-029, ADR-031)."""
+        def command(c: CheckSpec) -> str:
+            cmd = containers.container_command(c.command) if c.contained else resolve_command(c.command)
+            return subprocess.list2cmdline(cmd)
+
+        listed = "\n".join(f"  {c.name}: {command(c)}\n    {containers.describe(c)}"
+                           for c in self.org.checks)
+        where = (f"the worktree of {self.project['root']}" if self.project
+                 else str(self.workspace.root))
+        who = ("Model-written code will run as you." if any(not c.contained for c in self.org.checks)
+               else "Model-written code will run in the containers listed, with no network.")
+        return f"Allow this run to execute its declared checks in {where}? {who} Checks:\n{listed}"
+
     async def run_check(self, name: str, agent: str, step: str) -> CheckResult:
         try:
             spec = self.org.check(name)
         except KeyError:
             known = ", ".join(c.name for c in self.org.checks) or "none"
             raise ValueError(f"no check called {name!r} (checks: {known})") from None
-        if not self._exec_approved:
-            # the command as it will actually run ({python} resolved), so the human approves
-            # exactly what executes (ADR-006, ADR-029)
-            listed = "\n".join(f"  {c.name}: {subprocess.list2cmdline(resolve_command(c.command))}"
-                               for c in self.org.checks)
-            where = (f"the worktree of {self.project['root']}" if self.project
-                     else str(self.workspace.root))
-            prompt = (f"Allow this run to execute its declared checks in {where}? "
-                      f"Model-written code will run as you. Checks:\n{listed}")
-            ok, _ = await self.approve("exec", prompt, agent, step)
+        # `container_only`: a check in a container with no network runs without asking (ADR-031)
+        auto = spec.contained and self.options.allow_exec == CONTAINER_ONLY and not self._exec_approved
+        if not (self._exec_approved or auto):
+            ok, _ = await self.approve("exec", self.exec_prompt(), agent, step)
             if not ok:
                 result = CheckResult(name, False, None, "", 0.0,
-                                     "execution was not approved by the operator")
+                                     "execution was not approved by the operator", spec.runner)
                 self.emit("check.finished", agent=agent, step=step, **result.as_dict())
                 return result
             self._exec_approved = True
-        self.emit("check.started", agent=agent, step=step, name=name, command=spec.command)
-        result = await run_check_process(spec, self.workspace.root)
+        where: dict[str, Any] = {"runner": spec.runner}
+        if spec.contained:
+            where.update(image=spec.image, auto_approved=auto)
+        self.emit("check.started", agent=agent, step=step, name=name, command=spec.command, **where)
+        name_ = ""
+        if spec.contained:
+            self._containers += 1
+            name_ = containers.container_name(self.run_id, spec.name, self._containers)
+        result = await run_check_process(spec, self.workspace.root, name_)
+        if self.project:
+            # a check can write the worktree's `.git` file; left changed, Cadre's next git command
+            # on the host would follow it (ADR-031). Put it back, and fail the check that did it.
+            try:
+                changed = await asyncio.to_thread(restore_pointer, self.project["root"], self.workspace.root)
+            except (ProjectError, OSError) as e:
+                changed, result.note = True, f"{result.note} could not check the worktree's .git: {e}".strip()
+            if changed:
+                self.emit("project.git_restored", agent=agent, step=step, check=name)
+                result.passed = False
+                result.note = (f"{result.note}; " if result.note else "") + (
+                    "the check changed the worktree's .git; Cadre put it back and failed the check")
         self.emit("check.finished", agent=agent, step=step, **result.as_dict())
         return result
 

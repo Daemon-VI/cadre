@@ -285,9 +285,17 @@
       "type": "boolean"
      },
      "allow_exec": {
+      "anyOf": [
+       {
+        "const": "container_only",
+        "type": "string"
+       },
+       {
+        "type": "boolean"
+       }
+      ],
       "default": false,
-      "title": "Allow Exec",
-      "type": "boolean"
+      "title": "Allow Exec"
      },
      "auto_approve": {
       "default": false,

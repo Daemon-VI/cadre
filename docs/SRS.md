@@ -47,7 +47,7 @@ per-run file workspace, named verification checks, human approval gates, persist
 resume, CLI, REST API with live event stream, a local web dashboard.
 
 **Out of scope (v0.1), deferred with reasons in `ROADMAP.md`:** multi-user accounts and SSO,
-container sandbox for checks, web browsing tools, vector memory across runs, a hosted SaaS
+container sandbox for checks (since shipped as the container runner, FR-22), web browsing tools, vector memory across runs, a hosted SaaS
 deployment, fine-tuning models.
 
 ## 4. Functional requirements
@@ -278,6 +278,45 @@ with local paths generalised.
 - **AC-21.1** A Tauri 2 shell around the dashboard with the PyInstaller engine as its sidecar;
   unsigned installers built in CI only.
 
+### FR-22 Container runner for checks (M12)
+A check may run in a throwaway container instead of as the owner, so the model-written code it
+executes has no network, no files outside the workspace and, apart from its `env:` allowlist, none
+of the owner's environment. The kernel is shared and the workspace — including a worktree's `.git`
+file — stays writable; ADR-031 records what that does and does not contain.
+- **AC-22.1** A check declares `runner: docker | podman` (the default, `subprocess`, is unchanged)
+  and an `image:`. Org validation rejects a container check without an image, and an image not
+  pinned by digest (`name@sha256:<64 hex>`) unless the check sets `allow_unpinned: true`, which
+  the approval prompt and the check's result record. `image`, `env` or `allow_unpinned` on a
+  subprocess check is an error.
+- **AC-22.2** The container command line is an argument list, never a shell, with `--rm`, a name
+  derived from the run id, `--pull never`, `--network none`, `--read-only` plus `--tmpfs /tmp`,
+  `--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit`, `--memory` (equal to
+  `--memory-swap`) and `--cpus` from the org file (defaults 256, 512m, 1), and a non-root
+  `--user`. A unit test asserts each flag.
+- **AC-22.3** The only mount is the run's workspace, at `/work`. A filesystem root, the home
+  folder, `CADRE_HOME` and a directory holding a `.git` directory are refused, and nothing else
+  (the Docker socket included) is ever mounted — by construction: the command carries exactly one `--mount`, and a unit test asserts it. No environment variable passes except
+  `HOME=/tmp`, `PYTHONDONTWRITEBYTECODE=1` and the check's `env:` allowlist, by name only.
+  Credential-like names are rejected when the org is loaded and dropped at run time, as is any
+  variable whose value is a key Cadre has loaded.
+- **AC-22.4** Timeout, output cap, redaction and exit code behave as they do on the subprocess
+  runner; a timeout also kills the container by name. The check's result records the runner, the
+  image, its local id and the limits used.
+- **AC-22.5** Cadre never pulls an image. A missing image fails the check with the exact
+  `docker pull <image>` (or `podman pull`) command; a missing or stopped runtime fails with its
+  name.
+- **AC-22.6** Podman gets the same flags, plus `--userns keep-id` when the owner's uid is lent.
+- **AC-22.7** By default a container check still needs the `exec` approval.
+  `allow_exec: container_only` (`--allow-container-exec`) runs container checks without asking
+  and still asks before any check that runs as the owner. The approval prompt says, for every
+  check, where it runs: as the owner, or the runtime, image and limits. MCP can set neither.
+- **AC-22.8** Containment is tested with real containers in Linux CI, under Docker and Podman: a
+  check that tries to reach the network, write outside `/work`, read a key planted in the host
+  environment, fork past the pids limit or allocate past the memory cap fails to; one that
+  outlives its timeout is killed and removed; the M11 unit converter's tests pass inside.
+- **AC-22.9** The dashboard, the VS Code extension's run view and approval, the CLI and MCP's
+  `cadre_run_status` show where each check ran.
+
 ## 5. Non-functional requirements
 
 | ID | Requirement | Target |
@@ -285,7 +324,7 @@ with local paths generalised.
 | **NFR-1 Cost** | Runs entirely on free tiers | ₹0/month; token cost per run measured and shown |
 | **NFR-2 Footprint** | Fits this laptop (7.7 GB, ~1 GB free) | Server < 150 MB RSS; no local model needed |
 | **NFR-3 Security** | API bound to loopback, bearer token on every API call, Host header checked, no CORS; keys only in the OS store | Tests assert 401 without token and that no key value appears in events |
-| **NFR-4 Safety** | Model output never becomes a shell command; checks are declared, approved, time-limited | Tests for path escape, unknown check, exec approval |
+| **NFR-4 Safety** | Model output never becomes a shell command; checks are declared, approved, time-limited, and may run in a container with no network (FR-22) | Tests for path escape, unknown check, exec approval; every container flag, and real containment in Linux CI |
 | **NFR-5 Reliability** | Crash → resume without repeating finished work | Resume test counts provider calls |
 | **NFR-6 Observability** | Every decision explainable from the event log | Events for routing choice, fallback, wait, verdict, tally |
 | **NFR-7 Portability** | Windows first, Linux/macOS compatible; Python 3.12+, `uv` | CI matrix (not yet run — no workflow added) |

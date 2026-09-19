@@ -35,6 +35,12 @@ function h(tag, attrs, ...kids) {
 }
 const $main = () => document.getElementById("main");
 // replaceChildren would print a null child as the text "null": drop absent optional parts
+// where a check ran (FR-22): "as you" for the subprocess runner, else the runtime and its image
+function where(d) {
+  if (!d.runner || d.runner === "subprocess") return "as you";
+  const image = d.image || (d.container && d.container.image) || "";
+  return `in ${d.runner}${image ? " (" + image + ")" : ""}, no network${d.auto_approved ? ", run without asking (container_only)" : ""}`;
+}
 function put(el, ...nodes) { el.replaceChildren(...nodes.filter((n) => n !== null && n !== undefined && n !== false)); return el; }
 function mount(...nodes) { put($main(), ...nodes); }
 function toast(msg) {
@@ -188,9 +194,9 @@ function describe(e) {
     case "route.fallback": return [`fallback — ${d.note}`, "warn"];
     case "note": return [h("span", {}, "📌 ", d.text), ""];
     case "file.written": return [`wrote ${d.path}`, "quiet"];
-    case "check.started": return [`running check ${d.name}: ${(d.command || []).join(" ")}`, "quiet"];
+    case "check.started": return [`running check ${d.name}: ${(d.command || []).join(" ")} · ${where(d)}`, "quiet"];
     case "check.finished": return [h("span", {}, h("span", { class: `pill ${d.passed ? "good" : "bad"}`, text: `${d.name} ${d.passed ? "passed" : "failed"}` }),
-      ` ${d.seconds}s ${d.note || ""}`, d.output_tail ? h("details", {}, h("summary", { text: "output" }), h("pre", { text: d.output_tail })) : null), ""];
+      ` ${d.seconds}s · ${where(d)} ${d.note || ""}`, d.output_tail ? h("details", {}, h("summary", { text: "output" }), h("pre", { text: d.output_tail })) : null), ""];
     case "review.round": return [h("span", {},
       `review round ${d.round}: `, h("span", { class: `pill ${d.approved ? "good" : "warn"}`, text: d.approved ? "approved" : "changes requested" }), " ",
       ...(d.checks || []).map((c) => h("span", { class: `pill ${c.passed ? "good" : "bad"}`, text: c.name })), " ",

@@ -63,6 +63,27 @@ async def test_exactly_five_tools_and_none_can_approve(home):
     for t in tools:
         schema = json.dumps(t.input_schema if hasattr(t, "input_schema") else t.inputSchema)
         assert "approve" not in t.name and "auto_approve" not in schema
+        # allow_exec skips the exec approval; 1.0.0/1.0.1 let cadre_start_run set it (ADR-027)
+        assert "allow_exec" not in schema
+
+
+async def test_start_run_can_never_skip_the_exec_approval(home, monkeypatch):
+    server, _ = wire(home)
+    sent = {}
+
+    async def fake_call(method, path, **kw):
+        sent.update(kw.get("json") or {})
+        return {"id": "r1"}
+
+    monkeypatch.setattr(server_api(server), "call", fake_call)
+    async with Client(server) as c:
+        await c.call_tool("cadre_start_run", {"org": "software-team", "goal": "x", "project": ""})
+        assert sent["allow_exec"] is False and sent["auto_approve"] is False
+        sent.clear()
+        # a model that asks anyway is refused, or the argument is dropped; either way nothing skips
+        r = await c.call_tool("cadre_start_run", {"org": "software-team", "goal": "x", "project": "",
+                                                  "allow_exec": True})
+    assert r.is_error or sent["allow_exec"] is False
 
 
 async def test_a_run_waits_for_a_human_and_mcp_cannot_open_the_gate(home):

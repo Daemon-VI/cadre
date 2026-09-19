@@ -21,7 +21,7 @@ import re
 import secrets as pysecrets
 from contextlib import asynccontextmanager
 from importlib import resources
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
@@ -73,7 +73,8 @@ class RunIn(BaseModel):
     org: str | None = None
     yaml: str | None = None
     goal: str
-    allow_exec: bool = False
+    #: true, false, or "container_only" (only checks in a container with no network skip the approval)
+    allow_exec: Literal["container_only"] | bool = False
     auto_approve: bool = False
     demo: bool = False
     privacy: str | None = None

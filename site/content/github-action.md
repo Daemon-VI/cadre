@@ -18,6 +18,8 @@ body is its report plus a usage table. A human merges it, or doesn't.
 > took about 7 minutes ([#2](https://github.com/Daemon-VI/cadre-action-demo/pull/2)). The first
 > two tries failed and exposed four bugs, all now fixed. Since 1.0.0 the demo uses `Daemon-VI/cadre@v1`,
 > and its first run through that tag opened [#5](https://github.com/Daemon-VI/cadre-action-demo/pull/5).
+> After `v1` moved to 1.0.1, issue #6 opened [#7](https://github.com/Daemon-VI/cadre-action-demo/pull/7),
+> with a one-line title and `Closes #6` at the end of its body.
 
 ## Set it up
 
@@ -95,7 +97,12 @@ and `issues` write permissions and nothing else. More on why in the
 4. Runs the org on the checkout in project mode. The goal travels in an environment variable and is
    never pasted into a shell line. Gates are approved automatically (`--yes`), and with
    `allow-exec: true` (the default) checks run without asking, because the runner is a throwaway
-   machine. The pull request is the human gate.
+   machine. The pull request is the human gate. Checks run as the job's user by default, so a
+   check can reach the network and, probably, use the git credentials that `actions/checkout`
+   persists by default (the action's own `git push` relies on them; not tested from inside a
+   check). If the checks come from a repository you don't fully trust, declare them with
+   `runner: docker` in `.cadre/checks.yaml` (Ubuntu runners have Docker; pull the pinned image in
+   an earlier step, since Cadre never pulls): then the check itself has neither.
 5. If the run succeeded or finished unapproved *and made at least one commit*, pushes
    `cadre/<run-id>` and opens a pull request against the default branch (or `base`). Commits are
    attributed to the person who asked. Unapproved means a check or reviewer never passed the

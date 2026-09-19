@@ -4,6 +4,9 @@
 
 First version (Cadre distribution D4, FR-19).
 
+- The run view says where each check ran: as you, or in Docker or Podman with its image and no
+  network (Cadre M12). The approval's modal lists the same for every check.
+
 - Finds the local Cadre server on `cadre.port`; starts `cadre serve` or `uvx cadre-ai serve`,
   detached, when a view or command needs it.
 - Runs view with status icons; run view with a live event timeline, result and files.

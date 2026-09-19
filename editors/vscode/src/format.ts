@@ -151,9 +151,9 @@ function describeData(kind: string, d: Record<string, unknown>): Line {
     case "artifact.written":
       return line(`saved ${str(d.name)}`, "quiet");
     case "check.started":
-      return line(`running check ${str(d.name)}: ${list(d.command).map(str).join(" ")}`, "quiet");
+      return line(`running check ${str(d.name)}: ${list(d.command).map(str).join(" ")} · ${checkWhere(d)}`, "quiet");
     case "check.finished":
-      return line(`check ${str(d.name)} ${d.passed ? "passed" : "failed"} in ${str(d.seconds)}s${d.note ? " — " + str(d.note) : ""}`,
+      return line(`check ${str(d.name)} ${d.passed ? "passed" : "failed"} in ${str(d.seconds)}s · ${checkWhere(d)}${d.note ? " — " + str(d.note) : ""}`,
         d.passed ? "good" : "bad", str(d.output_tail) || undefined);
     case "review.round": {
       const checks = list(d.checks).map((c) => `${str(obj(c).name)} ${obj(c).passed ? "✓" : "✗"}`);
@@ -208,6 +208,14 @@ function describeData(kind: string, d: Record<string, unknown>): Line {
  * typing elsewhere, so it is a notification, which never takes keyboard focus. The exec modal,
  * whose default button is "Allow execution", opens only after they ask for it.
  */
+/** Where a check ran (FR-22): "as you" on the subprocess runner, else the runtime and its image. */
+export function checkWhere(d: Record<string, unknown>): string {
+  const runner = str(d.runner);
+  if (!runner || runner === "subprocess") return "as you";
+  const image = str(d.image) || str(obj(d.container).image);
+  return `in ${runner}${image ? ` (${image})` : ""}, no network${d.auto_approved ? ", run without asking (container_only)" : ""}`;
+}
+
 export function offerStyle(kind: string, userAsked: boolean): "modal" | "notice" {
   return kind === "exec" && userAsked ? "modal" : "notice";
 }

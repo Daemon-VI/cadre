@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from . import containers
 from .org import CheckSpec
 from .secrets import REDACTOR, scrubbed_env
 from .types import ToolCall, ToolSpec
@@ -207,11 +208,17 @@ class CheckResult:
     output: str
     seconds: float
     note: str = ""
+    #: where it ran (FR-22): "subprocess", "docker" or "podman"
+    runner: str = "subprocess"
+    #: container checks: the image, its local id and the limits used
+    container: dict[str, Any] | None = None
 
     def summary(self, limit: int = 1500) -> str:
         head = f"check {self.name}: {'PASSED' if self.passed else 'FAILED'}"
         if self.exit_code is not None:
             head += f" (exit {self.exit_code}, {self.seconds:.1f}s)"
+        if self.runner != "subprocess":
+            head += f" [in {self.runner}]"
         if self.note:
             head += f" — {self.note}"
         tail = self.output[-limit:] if self.output else ""
@@ -220,7 +227,8 @@ class CheckResult:
     def as_dict(self) -> dict[str, Any]:
         return {"name": self.name, "passed": self.passed, "exit_code": self.exit_code,
                 "seconds": round(self.seconds, 2), "note": self.note,
-                "output_tail": self.output[-1500:]}
+                "output_tail": self.output[-1500:], "runner": self.runner,
+                **({"container": self.container} if self.container else {})}
 
 
 def python_for_checks() -> str:
@@ -253,13 +261,21 @@ def _run_blocking(cmd: list[str], cwd: Path, timeout: int) -> tuple[int | None, 
         return None, "", f"could not start: {e}"
 
 
-async def run_check_process(spec: CheckSpec, cwd: Path) -> CheckResult:
-    """Run a declared check. A thread keeps this independent of the event loop's subprocess
-    support (uvicorn on Windows may run a selector loop, which cannot spawn processes)."""
+async def run_check_process(spec: CheckSpec, cwd: Path, container_name: str = "") -> CheckResult:
+    """Run a declared check, as the owner or in its container (FR-22). A thread keeps this
+    independent of the event loop's subprocess support (uvicorn on Windows may run a selector
+    loop, which cannot spawn processes). Timeout, output cap and exit code mean the same on both
+    runners."""
     started = time.monotonic()
-    code, out, note = await asyncio.to_thread(_run_blocking, resolve_command(spec.command),
-                                              cwd, spec.timeout)
+    container = None
+    if spec.contained:
+        name = container_name or containers.container_name("", spec.name, 0)
+        code, out, note, container = await asyncio.to_thread(containers.run_contained, spec, cwd, name)
+    else:
+        code, out, note = await asyncio.to_thread(_run_blocking, resolve_command(spec.command),
+                                                  cwd, spec.timeout)
     out = REDACTOR.redact(out)
     if len(out) > CHECK_OUTPUT_CAP:
         out = f"[… {len(out) - CHECK_OUTPUT_CAP} characters cut …]\n" + out[-CHECK_OUTPUT_CAP:]
-    return CheckResult(spec.name, code == 0, code, out, time.monotonic() - started, note)
+    return CheckResult(spec.name, code == 0, code, out, time.monotonic() - started, note,
+                       spec.runner, container)

@@ -29,6 +29,7 @@ from .engine import (
     RunRejected,
     RunStopped,
     StepFailed,
+    allow_exec_option,
     unapproved_steps,
 )
 from .forecast import estimate, forecast
@@ -139,7 +140,7 @@ class RunManager:
             raise KeyError(run_id)
         store = self.store
         opts = run["options"] or {}
-        options = RunOptions(allow_exec=bool(opts.get("allow_exec")),
+        options = RunOptions(allow_exec=allow_exec_option(opts.get("allow_exec")),
                              auto_approve=bool(opts.get("auto_approve")),
                              privacy=opts.get("privacy"))
         resumed = bool(store.step_paths(run_id))

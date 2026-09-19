@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-19 (1.0.0 released: PyPI, TestPyPI, GHCR, GitHub Release, the Action's `v1` and Marketplace listing; MCP checked from PyPI in Claude Code and VS Code; next: M12)_
+_Last updated: 2026-09-19 (1.0.1 released and `v1` moved to it; M12, the container runner for checks, done on `main` and not released; an MCP approval bypass in 1.0.0/1.0.1 fixed on `main`; next: M13)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -13,9 +13,80 @@ their API keys, at organisation scale — agents as workers, some building, some
 some verifying, some deciding". The refined statement and the three design drivers are in
 `SRS.md` §1.
 
-## Status: 1.0.0 released 2026-09-19
+## Status: 1.0.1 released 2026-09-19; M12 done, unreleased
 _One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D3, D5; the VS Code
 extension, D4, is built but not published); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
+
+## M12 — container runner for checks — DONE on `main`, 2026-09-19 (`PROMPT_M12.md`)
+
+FR-22 (AC-22.1…22.9), ADR-031 (with the threat model and what a container does not protect).
+`src/cadre/containers.py` builds `docker run` / `podman run` as an argument list; `CheckSpec` gains
+`runner`, `image`, `allow_unpinned`, `memory`, `cpus`, `pids_limit`, `env`; the engine's approval
+prompt says where every check runs, and `allow_exec: container_only` (`--allow-container-exec`)
+auto-approves only container checks. Subprocess stays the default.
+
+**Containment, real containers** (CI run 35444898292 on branch `m12`, job `containment`, Ubuntu,
+image `python:3.12-slim@sha256:2f17fc04…`; the same outcomes on the first run, 35444664883, and on
+the final code, 35445270881, with Docker 28.0.4 and Podman 4.9.3, 7 of 7 each):
+
+| Attack | Docker | Podman |
+|---|---|---|
+| Reach the network (TCP 1.1.1.1:443, DNS, HTTP; the host itself reached 1.1.1.1:443) | contained: `Network is unreachable`, DNS `Temporary failure in name resolution` | contained, same |
+| Write outside `/work` (`/etc`, `/`, `/usr/lib`, `/home`, `/work/..`) | contained: all `OSError`; `/work` and `/tmp` writable; ran as uid 1001 | contained, same |
+| Read a key planted in the host environment (as `*_API_KEY`, and under an innocent allowlisted name) | contained: not in the environment nor in `/proc/1/environ`; the allowlisted non-secret variable passed | contained, same |
+| Fork bomb, `pids_limit: 64` | contained: stopped after 63 forks, `[Errno 11] Resource temporarily unavailable` | contained, same |
+| Allocate 512 MiB, `memory: 128m` | contained: killed, exit 137 | contained: killed, exit 137 |
+| Outlive a 5 s timeout | killed; `docker ps -a` no longer lists it | killed and removed |
+| Normal check: the M11 unit converter's unittest | passed, `Ran 9 tests … OK` | passed, `Ran 9 tests … OK` |
+
+The first CI run failed only the Podman normal check's *assertion*: the check passed, but Podman
+reports image ids as bare hex, not `sha256:<hex>`. The test now accepts both (recorded in ADR-031).
+
+**Not contained, by design (ADR-031):** the shared kernel, the read-write workspace (a check can
+plant files a person later runs), anything already in the workspace, the image itself, disk use,
+and prompt injection through the check's output.
+
+**On this laptop** (Rithik's yes, once; he was not asked to close programs, and ~1.0 GB was free):
+Docker Desktop 29.6.2 started in 28 s; `vmmemWSL` 1,216 MB after start, and free memory fell from
+1,077 MB to 280 MB. The first check failed as designed ("image … is not on this machine, and Cadre
+never pulls one … Run: docker pull …"). After that pull, the unit converter check ran through
+`run_check_process` with `runner: docker`: **passed in 2.3 s, `Ran 9 tests … OK`, user
+10001:10001, network none**. During it `vmmemWSL` peaked at 991 MB and free memory never fell
+below 403 MB. `docker desktop stop` afterwards; no WSL distribution left running. The hostile
+probes were not run on Windows.
+
+**Two holes found and fixed while building M12** (both in 1.0.0/1.0.1 or introduced by M12):
+1. *MCP approval bypass (in released 1.0.0/1.0.1).* `cadre_start_run` forwarded `allow_exec`, which
+   skips the exec approval, so a model over MCP could run checks unapproved, contrary to ADR-027.
+   The argument is gone; two tests fail on the old code.
+2. *Cadre's own git could run a check's planted command (caught by the claim-auditor).* In project
+   mode Cadre commits on the host after each step. The worktree's `.git` file is in the writable
+   workspace; a check could repoint it or make it a directory with `core.fsmonitor`/a hook, and the
+   next commit would run that outside any container, as the owner. Fixed: Cadre resolves the git
+   dir from the owner's repo, uses `--git-dir`/`--work-tree`, restores the pointer around every git
+   command and after each check, and fails a check that changed it. `tests/test_project.py` proves
+   it with a control showing plain git *does* run the planted command.
+
+Tests: **236 passed, 9 skipped** locally on Windows (the 7 containment tests skip without
+`CADRE_CONTAINMENT`, and one planted-`.git` case skips where this git honoured neither
+`core.fsmonitor` nor the hook), 7 of 7 containment tests under each runtime in CI; the extension's
+72 unit tests pass; `ruff` clean.
+
+## 1.0.1 release (2026-09-19)
+
+Tag `v1.0.1` on 18e4aec (`git log v1.0.0..` = the Action's PR title and `Closes #N`, the dashboard
+fixes, and doc commits). Release run 35443644003 green on the first attempt: TestPyPI, PyPI
+(upload 12:43:44Z), GHCR, three standalone builds, GitHub Release. PyPI's project JSON lagged
+behind its per-version JSON for a few minutes, so the first `uvx --from cadre-ai@1.0.1` said "no
+version"; the simple index listed it at 12:47:50Z. Then, from a clean uv cache and a new
+`CADRE_HOME`: `cadre 1.0.1`, and a `decision-board --demo` run succeeded. SHA-256 on PyPI =
+TestPyPI = GitHub Release: `7d3fc653…` wheel (147,054 bytes), `32d0de29…` sdist. GHCR `1.0.1`,
+`1.0` and `latest` all resolve anonymously to `sha256:d1eb4207…`. `v1` moved from c0073ba to
+18e4aec (pushed with `--force` for `v1` only). Proof: labelled issue #6 on `cadre-action-demo` →
+run 35443948799 downloaded `Daemon-VI/cadre@v1` at 18e4aec → PR #7, title `Cadre: Add __version__
+= "0.1.0" to textstats/__init__.py` (one line; PR #5's title had carried the issue body's newline),
+body ending `Closes #6`, all 7 tests passing. The GitHub Marketplace listing showed v1.0.1 as
+Latest without any action from Rithik.
 
 ## 1.0.0 release (2026-09-19, `PROMPT_RELEASE.md`)
 
@@ -31,14 +102,14 @@ re-run on the same tag after Rithik fixed each site's pending publisher: TestPyP
 
 | Channel | Version | Where | How it was verified |
 |---|---|---|---|
-| GitHub Release | 1.0.0 | github.com/Daemon-VI/cadre/releases/tag/v1.0.0 | 5 assets (wheel, sdist, Windows/macOS-arm64/Linux builds). The Windows zip, downloaded with `gh release download` into a clean folder: `cadre 1.0.0`, and `run decision-board … --demo` succeeded |
-| GHCR | 1.0.0, 1.0, latest, sha-c0073ba | ghcr.io/daemon-vi/cadre | anonymous pull token → manifest 200 for `1.0.0` and `latest` (so the package is public). Not run on this laptop: Docker Desktop was stopped and 0.9 GB RAM was free. The release job's smoke test ran it as uid 10001, `--version`, and a demo run that succeeded |
+| GitHub Release | 1.0.1 | github.com/Daemon-VI/cadre/releases/tag/v1.0.1 | 1.0.1: 5 assets, the wheel and sdist hashes match PyPI (see "1.0.1 release"); the builds were not re-run by hand. 1.0.0: 5 assets (wheel, sdist, Windows/macOS-arm64/Linux builds). The Windows zip, downloaded with `gh release download` into a clean folder: `cadre 1.0.0`, and `run decision-board … --demo` succeeded |
+| GHCR | 1.0.1, 1.0, latest (and 1.0.0) | ghcr.io/daemon-vi/cadre | 1.0.1: anonymous manifest 200 for `1.0.1`, `1.0` and `latest`, all `sha256:d1eb4207…`. 1.0.0: anonymous pull token → manifest 200 for `1.0.0` and `latest` (so the package is public). Not run on this laptop: Docker Desktop was stopped and 0.9 GB RAM was free. The release job's smoke test ran it as uid 10001, `--version`, and a demo run that succeeded |
 | MCP from PyPI | 1.0.0 | `uvx --from "cadre-ai[mcp]" cadre mcp` | **Claude Code 2.1.278**: `claude mcp add --scope project` in a scratch fixture, then `claude -p --mcp-config .mcp.json`: 5 tools; `cadre_list_orgs` → 5 templates; `cadre_forecast` → `cannot_run` (scratch home, no key), "no history, estimated from template size". **VS Code 1.138** (isolated instance, `.vscode/mcp.json`, *MCP: List Servers → Start Server*): uv installed 50 packages, log "Discovered 5 tools"; no agent-mode call (needs a Copilot sign-in). **Antigravity**: not found on this laptop |
-| GitHub Action | `v1` → c0073ba | `uses: Daemon-VI/cadre@v1` | `cadre-action-demo` switched to `@v1`; issue #4 (labelled) → run `20260919-101549-2299e0` succeeded → PR #5 (+1 line, a docstring; 19 calls, 33,835 + 1,554 tokens; reviewer used Qwen and gpt-oss) |
-| TestPyPI | 1.0.0 | test.pypi.org/project/cadre-ai | fourth attempt at the job, after Rithik corrected the pending publisher (the first three: `invalid-publisher`). Both files' SHA-256 match the GitHub Release (`6c7f593f…` wheel, `fcbb4de9…` sdist) |
-| **PyPI** | **1.0.0** | pypi.org/project/cadre-ai | second attempt, after Rithik corrected the pypi.org publisher (the first: `invalid-publisher` for environment `pypi`; nothing uploaded). Same SHA-256 as above. From a clean uv cache and a new `CADRE_HOME`: `uvx --from cadre-ai cadre --version` → `cadre 1.0.0`, a `decision-board --demo` run succeeded, and `uvx cadre-ai --version` works too. `pipx` is not installed here, so `pipx install` was not tried |
-| VS Code Marketplace / Open VSX | — | — | not published: `VSCE_PAT` and `OVSX_PAT` are not set |
-| GitHub Marketplace | v1.0.0 | github.com/marketplace/actions/cadre-finish-this-project | listed by Rithik on the release page (2026-09-19); the page names Daemon-VI/cadre and v1.0.0 |
+| GitHub Action | `v1` → 18e4aec (1.0.1) | `uses: Daemon-VI/cadre@v1` | since 1.0.1: issue #6 → PR #7, one-line title, body ends `Closes #6`. Before: `cadre-action-demo` switched to `@v1`; issue #4 (labelled) → run `20260919-101549-2299e0` succeeded → PR #5 (+1 line, a docstring; 19 calls, 33,835 + 1,554 tokens; reviewer used Qwen and gpt-oss) |
+| TestPyPI | 1.0.1 | test.pypi.org/project/cadre-ai | 1.0.1: first attempt, same SHA-256 as PyPI. 1.0.0: fourth attempt at the job, after Rithik corrected the pending publisher (the first three: `invalid-publisher`). Both files' SHA-256 match the GitHub Release (`6c7f593f…` wheel, `fcbb4de9…` sdist) |
+| **PyPI** | **1.0.1** | pypi.org/project/cadre-ai | 1.0.1: first attempt; clean-cache `uvx --from cadre-ai@1.0.1` → `cadre 1.0.1`, demo run succeeded. 1.0.0: second attempt, after Rithik corrected the pypi.org publisher (the first: `invalid-publisher` for environment `pypi`; nothing uploaded). Same SHA-256 as above. From a clean uv cache and a new `CADRE_HOME`: `uvx --from cadre-ai cadre --version` → `cadre 1.0.0`, a `decision-board --demo` run succeeded, and `uvx cadre-ai --version` works too. `pipx` is not installed here, so `pipx install` was not tried |
+| VS Code Marketplace / Open VSX | — | — | not published: `VSCE_PAT` and `OVSX_PAT` are not set (`gh secret list` empty on 2026-09-19, and no `vscode-marketplace` environment) |
+| GitHub Marketplace | v1.0.1 | github.com/marketplace/actions/cadre-finish-this-project | listed by Rithik on the 1.0.0 release page (2026-09-19); on 2026-09-19 the page showed "v1.0.1 Latest" with no further action |
 
 ### Seen on screen for the first time (2026-09-19)
 
@@ -154,7 +225,9 @@ Also noted: after a Reject, the engine asks again on the agent's next `run_check
   person has not yet used it in a normal browser session.
 - Gemini, Mistral, Z.ai limits are conservative guesses or third-party reports (`presets.py`
   marks each); the header learning corrects them only where a provider sends headers.
-- Checks are not sandboxed (ADR-006). Use `--allow-exec` only for goals you trust.
+- Checks run as the owner unless the org gives them `runner: docker|podman` (M12, ADR-031); a
+  container still shares the kernel and can change the workspace. Use `--allow-exec` only for
+  goals you trust.
 - Single user. The token is one shared secret; no roles, no per-team budgets yet (M13).
 - Budgets are cumulative across resumes and parks (M10); `resume --add-calls` raises them.
 - Starlette warns that its TestClient's `httpx` backend is deprecated; harmless for now.
@@ -518,24 +591,29 @@ Kept as history: the first attempt stalled on the session's safety classifier; R
 Every item is met, and 1.0.0 was tagged and released on 2026-09-19 (see "1.0.0 release").
 
 ## Where to pick up
-1. **Next: `ROADMAP.md` M12**, the container runner for checks (checks are not sandboxed today).
+1. **Next: `ROADMAP.md` M13**, multi-user organisations. M12 (the container runner) is done on
+   `main` but **not released**.
 2. Waiting on Rithik, each his call:
-   - **1.0.1 and moving `v1`**: `main` has fixes that 1.0.0 lacks. Among them are the Action's PR
-     title and `Closes #N`, and the dashboard's null callouts. Release: bump the version in
-     `pyproject.toml` and `src/cadre/__init__.py`, date a CHANGELOG entry, push `v1.0.1`
-     (publishes everywhere), then move `v1`.
-   - **VS Code extension publish**: he sets `VSCE_PAT` and `OVSX_PAT` with `gh secret set`, then a
-     `vscode-v0.1.0` tag publishes to both registries. The build must include b2c0bae (the exec
-     approval is a notification; a poll never opens the modal).
+   - **Release 1.1.0** (M12 + the MCP security fix). The fix closes a hole in the released 1.0.0
+     and 1.0.1: MCP's `cadre_start_run` could set `allow_exec` and skip the exec approval. Tag
+     `v1.1.0` after bumping `pyproject.toml`, `src/cadre/__init__.py` and `uv.lock`, and dating the
+     CHANGELOG's "Unreleased (1.1.0)". Moving `v1` to it is a **separate** yes.
+   - **VS Code extension publish**: `gh secret list` shows no secrets, and the `vscode-marketplace`
+     environment the publish job uses does not exist yet. He creates the publisher `daemon-vi` on
+     the VS Code Marketplace, both tokens, and runs `gh secret set VSCE_PAT` / `gh secret set
+     OVSX_PAT` himself. Then set the extension to 1.0.1 (or 1.1.0 if that ships first), and a
+     `vscode-v<version>` tag publishes both. The Open VSX namespace `daemon-vi` may need creating
+     once (`npx ovsx create-namespace` from a workflow step, never with the token on a command line).
    - **Agent-mode MCP call in VS Code** (needs his Copilot sign-in), and **Antigravity**, which he
      said he has but which was not found on this laptop.
+   - Demo PRs #5 and #7 on `cadre-action-demo` are open; merging or closing them is his call.
 3. Known and not yet fixed: after a Reject, the engine asks for exec approval again on the agent's
    next `run_check`. A runner's usage ledger starts empty, so the Action's "left today" is always
-   the full free limit.
+   the full free limit. Containment is proven on Linux only (see "M12").
 4. Done, for the record: keys rotated (a new key goes in with `provider key <id>`, not `provider
    add`); the scheduler job is installed (every 30 min; remove with `cadre scheduler uninstall`);
    the repo is public with Pages and private vulnerability reporting; the D3 real test; the 1.0.0
-   release (see "1.0.0 release").
+   and 1.0.1 releases; M12.
 
 ## Environment
 `cd cadre`, `uv sync`, `uv run pytest -q`. State in `~/.cadre` (`CADRE_HOME`

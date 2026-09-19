@@ -121,6 +121,11 @@ class SecretStore:
             return False
 
 
+def looks_secret(name: str) -> bool:
+    """A variable *named* like a credential; never passed to a check."""
+    return bool(_SECRET_NAME.search(name))
+
+
 def scrubbed_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     """The environment a check subprocess gets: nothing that looks like a credential.
 

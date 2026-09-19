@@ -50,7 +50,17 @@ test("long text goes to detail; the line stays short", () => {
 
 test("check, review and vote events", () => {
   const check = describeEvent(ev("check.finished", { name: "tests", passed: false, seconds: 2.5, output_tail: "1 failed" }));
-  assert.equal(check.text, "check tests failed in 2.5s");
+  assert.equal(check.text, "check tests failed in 2.5s · as you");
+  const boxed = describeEvent(ev("check.finished", {
+    name: "tests", passed: true, seconds: 1, runner: "docker",
+    container: { image: "python:3.12-slim@sha256:abc", network: "none" },
+  }));
+  assert.equal(boxed.text, "check tests passed in 1s · in docker (python:3.12-slim@sha256:abc), no network");
+  const started = describeEvent(ev("check.started", {
+    name: "tests", command: ["python3", "-m", "unittest"], runner: "podman", image: "img@sha256:1", auto_approved: true,
+  }));
+  assert.equal(started.text,
+    "running check tests: python3 -m unittest · in podman (img@sha256:1), no network, run without asking (container_only)");
   assert.equal(check.tone, "bad");
   assert.equal(check.detail, "1 failed");
   const review = describeEvent(ev("review.round", {

@@ -32,8 +32,8 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M9** | Project mode | G2 · FR-8 | done 2026-09-17 (offline, git fixtures) |
 | **M10** | Multi-day runs | G4 · FR-9 | done 2026-09-17 (offline, fake clock; scheduler not installed) |
 | **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | capstone done 2026-09-18 (both succeeded); release pending the definition-of-done items in PROJECT_STATE |
-| M12 | Container runner for checks | — | after v1.0 |
-| M13 | Multi-user organisations | — | after v1.0 |
+| **M12** | Container runner for checks | FR-22 · ADR-031 | done 2026-09-19 (containment tested in Linux CI under Docker and Podman; one check run in Docker Desktop on the laptop) |
+| M13 | Multi-user organisations | — | **next** |
 | M14 | Memory across runs | — | after v1.0 |
 | M15 | Web research tool | — | after v1.0 |
 | M16 | Hosted deployment | — | after v1.0 |
@@ -97,9 +97,10 @@ role, independence, check results, repairs and 429s. Then `claim-auditor`, versi
 
 ## After v1.0 (renumbered from v0.1's M6–M10)
 
-- **M12 — container runner for checks.** Checks run model-written code as the owner (ADR-006).
+- **M12 — container runner for checks. Done 2026-09-19** (`PROMPT_M12.md`, FR-22, ADR-031).
   Optional `runner: docker|podman` per check: workspace mounted, no network, CPU/memory caps.
   Subprocess stays the default because Docker next to a Gradle build does not fit this laptop.
+  Released only when Rithik says yes to 1.1.0.
 - **M13 — multi-user organisations.** Users and roles, per-team budgets and model allowances,
   approvals routed to a role, an audit log, OIDC SSO. Shared keys stay server-side.
 - **M14 — memory across runs.** Per-org knowledge files injected under a hard cap; files before

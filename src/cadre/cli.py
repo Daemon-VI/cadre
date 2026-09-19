@@ -33,7 +33,7 @@ from .config import (
     provider_from_preset,
     refresh_provider,
 )
-from .engine import RunOptions
+from .engine import CONTAINER_ONLY, RunOptions
 from .forecast import estimate, forecast, usage_ledger
 from .org import OrgError, find_org_text, load_org_text, template_names
 from .presets import CHECKED, PRESETS
@@ -563,7 +563,8 @@ def _line(e: dict[str, Any]) -> str | None:
             f" ({d['seconds']}s)" if "seconds" in d else "")
     if k == "check.finished":
         colour = "green" if d["passed"] else "red"
-        return f"{tag}   [{colour}]check {d['name']} {'passed' if d['passed'] else 'FAILED'}[/] {esc(d.get('note', ''))}"
+        ran = "" if d.get("runner", "subprocess") == "subprocess" else f" in {d['runner']}"
+        return f"{tag}   [{colour}]check {d['name']} {'passed' if d['passed'] else 'FAILED'}[/]{ran} {esc(d.get('note', ''))}"
     if k == "review.round":
         checks = " ".join(f"{c['name']}={'ok' if c['passed'] else 'FAIL'}" for c in d["checks"])
         verdicts = " ".join(f"{v['reviewer']}={'approve' if v['approve'] else 'changes'}" for v in d["verdicts"])
@@ -673,6 +674,9 @@ def run(
     org: str = typer.Argument(..., help="template name, your org name, or a .yaml path"),
     goal: str = typer.Argument(..., help="what the organisation should achieve"),
     allow_exec: bool = typer.Option(False, "--allow-exec", help="let checks run model-written code without asking"),
+    allow_container_exec: bool = typer.Option(
+        False, "--allow-container-exec",
+        help="let checks that run in a container with no network run without asking; checks that run as you still ask"),
     yes: bool = typer.Option(False, "--yes", "-y", help="auto-approve gates and questions"),
     demo: bool = typer.Option(False, "--demo", help="offline scripted model; no key needed"),
     private: bool = typer.Option(False, "--private",
@@ -693,7 +697,8 @@ def run(
     h = home()
     manager = RunManager(h)
     try:
-        run_id = manager.create(org, goal, RunOptions(allow_exec=allow_exec, auto_approve=yes,
+        exec_policy: bool | str = True if allow_exec else (CONTAINER_ONLY if allow_container_exec else False)
+        run_id = manager.create(org, goal, RunOptions(allow_exec=exec_policy, auto_approve=yes,
                                                       privacy="private" if private else None),
                                 demo=demo, project=project, base=base, allow_dirty=allow_dirty)
     except (OrgError, FileNotFoundError, ProjectError, ValueError) as e:

@@ -24,7 +24,9 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+from .secrets import looks_secret
 
 SLUG = r"^[a-z][a-z0-9_-]{0,31}$"
 KNOWN_TOOLS = ("list_files", "read_file", "search", "write_file", "edit_file", "run_check",
@@ -54,11 +56,52 @@ class AgentSpec(_Strict):
         return [v] if isinstance(v, str) else v
 
 
+#: an image reference pinned by content: `name[:tag]@sha256:<64 hex>` (ADR-031)
+PINNED_IMAGE = re.compile(r"^[a-z0-9][a-z0-9._/:-]*@sha256:[0-9a-f]{64}$")
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
 class CheckSpec(_Strict):
     name: str = Field(pattern=SLUG)
     command: list[str] = Field(min_length=1)
     description: str = ""
     timeout: int = Field(120, ge=1, le=1800)
+    #: where the command runs (FR-22): as the owner (`subprocess`, the default) or in a container
+    runner: Literal["subprocess", "docker", "podman"] = "subprocess"
+    #: container checks only: the image, pinned by digest unless `allow_unpinned`
+    image: str | None = None
+    allow_unpinned: bool = False
+    memory: str = Field("512m", pattern=r"^[1-9][0-9]*[kmg]$")
+    cpus: float = Field(1.0, gt=0, le=64)
+    pids_limit: int = Field(256, ge=16, le=32768)
+    #: container checks only: variables passed through by name; nothing else is
+    env: list[str] = Field(default_factory=list)
+
+    @property
+    def contained(self) -> bool:
+        return self.runner != "subprocess"
+
+    @model_validator(mode="after")
+    def _runner_fields(self) -> CheckSpec:
+        where = f"check {self.name!r}"
+        if not self.contained:
+            extra = [k for k in ("image", "env") if getattr(self, k)]
+            if extra or self.allow_unpinned:
+                raise ValueError(f"{where}: {', '.join(extra) or 'allow_unpinned'} only applies to "
+                                 "`runner: docker` or `runner: podman`")
+            return self
+        if not self.image:
+            raise ValueError(f"{where} runs in a container, so it needs `image:` (pinned by digest)")
+        if not PINNED_IMAGE.match(self.image) and not self.allow_unpinned:
+            raise ValueError(f"{where}: image {self.image!r} is not pinned by digest; write it as "
+                             "name@sha256:<digest> (docker images --digests), or set "
+                             "`allow_unpinned: true` to accept whatever the tag points at")
+        for n in self.env:
+            if not ENV_NAME.match(n):
+                raise ValueError(f"{where}: {n!r} is not a variable name")
+            if looks_secret(n):
+                raise ValueError(f"{where}: {n} looks like a credential; keys never reach a check")
+        return self
 
 
 class Budget(_Strict):

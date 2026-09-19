@@ -90,7 +90,8 @@ In a review loop, checks run first and are authoritative: approval requires ever
 Checks run with `cwd` = workspace, an environment scrubbed of anything named like a key, token,
 secret or password, a timeout and a 16 KB output cap, and — unless the run was started with
 `allow_exec` — only after an `exec` approval. **This is not a sandbox**: the code the builder
-wrote runs as the owner. Documented in the README; a container runner is on the roadmap.
+wrote runs as the owner. Documented in the README. Since M12 a check may instead run in a
+container (ADR-031).
 
 ### ADR-007 — Votes are counted by code
 Council members vote in strict JSON (`{"choice": "B", "confidence": 0.7, "reason": "…"}`). The
@@ -364,8 +365,9 @@ because every schema is replayed in the host's context too. It is a client of `c
 kind is granted over MCP** — neither `exec` approvals (they let model-written code run) nor gate
 approvals: the caller is itself a model, and a gate that a model can open for another model's work
 is not a gate. A run waiting on approval reports `cadre approve <id>` and the dashboard URL.
-`cadre_start_run` may ask for `allow_exec` (checks still wait for a human's approval) but never
-`auto_approve`. **Threat model.** Prompt injection in the host's context can call any tool, so
+`cadre_start_run` sets neither `allow_exec` nor `auto_approve`, so checks always wait for a
+human's approval. (Until 1.1 it forwarded an `allow_exec` argument, which skipped the exec
+approval: a model could run checks unapproved. Found during M12; the tool no longer has it.) **Threat model.** Prompt injection in the host's context can call any tool, so
 the tools can start and inspect runs (spending the owner's free quota — bounded by budgets) but
 cannot approve, cancel another tool's run silently, add providers or read keys; the token never
 appears in a result. **Rejected.** *HTTP/SSE transport* — a second listening port.
@@ -434,3 +436,89 @@ certifi's own files, and Cadre uses it unmodified through httpx, so it is allowe
 no other MPL package is. PyInstaller (D1) is GPL with a bootloader exception that lets frozen
 applications carry any licence; it is a build tool and is not shipped in the wheel.
 **Rejected.** *A blanket MPL allowance* — the next MPL dependency should be a reviewed decision.
+
+### ADR-031 — A container runner for checks, and what it does not contain (FR-22)
+**Context.** Checks run model-written code as the owner (ADR-006). That was the last real safety
+gap, and it blocks M13 (user accounts) and M16 (hosting). **Decision.** A check may say
+`runner: docker` or `runner: podman`. `containers.py` builds the command as an argument list:
+`--rm`, a name derived from the run id, `--pull never`, `--network none`, `--read-only` with a
+64 MB `/tmp` tmpfs, `--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit`,
+`--memory` and `--memory-swap` (equal, so no swap) and `--cpus` from the org file (defaults 256,
+512m, 1), a non-root `--user`, and exactly one bind mount: the run's workspace at `/work`. The
+user is the owner's uid on Linux and macOS, so files written in the workspace stay theirs; 65534
+when Cadre itself runs as root; 10001 on Windows, where Docker Desktop ignores the uid on bind
+mounts. The subprocess runner stays the default, because Docker next to a Gradle build does not
+fit a 7.7 GB laptop.
+
+**Threat model.** The attacker is the code under test: written by a model, and possibly steered
+by a hostile goal, issue or file in the repository.
+
+| Asset | Subprocess runner | Container runner |
+|---|---|---|
+| The network (exfiltration, downloads) | reachable | not reachable: `--network none` leaves only loopback |
+| The owner's files outside the workspace | readable and writable | not mounted |
+| Keys | names and known values scrubbed from the environment; everything else in the environment readable | only the `env:` allowlist, by name; credential names and known key values never |
+| The owner's repository `.git` (history, hooks, config, stored credentials) | reachable through the worktree's `.git` file | not mounted: the owner's git dir is outside `/work`, and a directory holding a `.git` directory is refused as a mount |
+| The host's processes, memory, CPU | unlimited until the timeout | capped: pids, memory (no swap), CPUs, and the timeout |
+| The workspace itself, including the worktree's `.git` **file** | read-write; but Cadre's own git never trusts it (see below) | **read-write**; same |
+
+**What a container does NOT protect against.**
+1. **The kernel is shared.** A kernel or container-runtime exploit escapes. With rootful Docker
+   on Linux that is root on the host (the Docker socket is root-equivalent, and a user in the
+   `docker` group already holds that power; Cadre does not add it). Docker Desktop on Windows and
+   macOS puts a VM between the container and the host; rootless Podman maps the container's root
+   to the owner's uid.
+2. **The workspace is mounted read-write.** A check can change or delete anything in it, and can
+   plant code that a person later runs outside the container: a `Makefile`, a `conftest.py`, a
+   `.vscode/tasks.json`, a package's install hook. It can also change what a reviewer reads. In
+   project mode all of it lands on `cadre/<run-id>` for review; nothing merges itself.
+   **The one place this would have crossed back to the host is Cadre's own git.** In project mode
+   Cadre runs `git add -A` and `git commit` in the worktree on the host after every step, as the
+   owner. The worktree's `.git` **file** is inside the workspace, so a check could repoint it — or
+   replace it with a directory whose config sets `core.fsmonitor`, `core.hooksPath` or a clean
+   filter — and Cadre's next commit would run that command outside the container. **Closed
+   (2026-09-19):** Cadre never lets git discover the repository from the workspace. It resolves
+   the worktree's real git dir from the owner's repository and passes it with `--git-dir` /
+   `--work-tree`; before each of its own git commands, and after each check, it rewrites the `.git`
+   pointer to that dir (`project.restore_pointer`). A check that changed the pointer is **failed**,
+   with `project.git_restored` emitted. So a planted `core.fsmonitor`/hook is never on the path
+   Cadre's git reads. `tests/test_project.py` proves it, with a control showing plain git in the
+   same tampered worktree does run the planted command.
+3. **Anything already in the workspace is readable**, a committed `.env` for example.
+4. **The image is trusted.** A digest pins what runs; it does not make a malicious or vulnerable
+   image safe. Choosing the image is the owner's decision.
+5. **Disk is not capped.** The mount has no quota, so a check can fill the disk until the timeout.
+6. **Output goes back to the models** (redacted and capped), so a check can still attempt prompt
+   injection through what it prints.
+7. **Side channels, and loopback inside the container**, are out of scope.
+
+**Approval policy.** The `exec` approval stays the default for every runner: a person approves the
+list of checks, and the prompt now says where each one runs (as you, or the runtime, image and
+limits, with "NOT pinned by digest" when it is not). `allow_exec: container_only` (CLI
+`--allow-container-exec`, API `"allow_exec": "container_only"`) auto-approves only checks that run
+in a container, all of which have no network; a subprocess check in the same run still asks.
+`--allow-exec` keeps its meaning: run every check without asking. MCP can set neither (ADR-027);
+until this milestone it could set `allow_exec`, which was a bug.
+
+**Image policy.** Images are pinned by digest in the org file. `allow_unpinned: true` accepts a
+tag, and is recorded in the approval prompt and in the result (`pinned: false`). Cadre never
+pulls: every run uses `--pull never` after an `image inspect`. A pull reaches the network from the
+host, so it is the owner's own act, and a missing image fails the check with the exact
+`docker pull <image>` to run. **Rejected:** *an in-engine pull behind its own approval.* It would
+add a second, rarely seen approval kind for a one-line command, and approving it from the
+dashboard would make the engine reach the network on the host.
+
+**Podman.** It accepts the same flags. The difference: with the owner's uid lent, rootless Podman
+needs `--userns keep-id`, or the owner's files show up as root's inside the container. It also
+reports image ids as bare hex where Docker writes `sha256:<hex>`.
+
+**The GitHub Action** keeps the subprocess runner by default. Its machine is already throwaway,
+and the pull request is the human gate. Use a container check there when a check must not reach
+what the job holds. A subprocess check runs as the job's user, so it can reach the network and
+can probably use the git credentials that `actions/checkout` persists by default (the action's own
+`git push` relies on them; not tested from inside a check). In a container it gets neither.
+
+**Proof.** `tests/test_containers.py` covers every flag, the one mount, the user, removal of
+environment variables, validation, the approval policy, the missing image, and the kill on
+timeout, with no Docker needed. `tests/test_containment.py` runs in the CI job `containment`
+under Docker and Podman on Ubuntu, with `python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9`; PROJECT_STATE "M12" records each outcome.

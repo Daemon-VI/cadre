@@ -111,6 +111,18 @@ the `..` tests exercise.
 | `cadre run --result-json` | `test_result_json_for_scripts` |
 | MCP project default order (`CADRE_PROJECT`, `CLAUDE_PROJECT_DIR`, roots, cwd repo) | `test_project_vars_come_before_roots_and_cwd` |
 | AC-17.5 no token in results | `test_a_run_waits_for_a_human_and_mcp_cannot_open_the_gate`; `tools/mcp_smoke.py` |
+| AC-17.3 MCP can never skip the exec approval (the 1.0.0/1.0.1 `allow_exec` bypass) | `test_mcp::test_start_run_can_never_skip_the_exec_approval`; `test_exactly_five_tools_and_none_can_approve` asserts no `allow_exec` in any schema |
+| AC-22.1 runner, pinned image, `allow_unpinned` | `test_containers::test_a_container_check_needs_a_pinned_image`, `test_container_settings_on_a_subprocess_check_are_refused`, `test_org_files_carry_the_runner` |
+| AC-22.2 every container flag | `test_every_required_flag_is_on_the_command_line`, `test_the_user_is_never_root`, `test_the_name_is_derived_from_the_run_id` |
+| AC-22.3 one mount, environment allowlist | `test_the_workspace_is_the_only_mount`, `test_nothing_wider_than_a_workspace_is_mounted` (home, root, `CADRE_HOME`, `.git` directory, comma), `test_a_worktree_with_a_git_file_is_mountable`, `test_only_allowlisted_names_pass_and_keys_never_do`, `test_a_credential_name_cannot_be_allowlisted` |
+| AC-22.4 timeout, cap, exit code, what was used | `test_exit_code_output_cap_and_what_was_used_are_recorded`, `test_a_timeout_kills_the_named_container`, `test_exit_137_is_explained` |
+| AC-22.5 never pulls | `test_a_missing_image_fails_with_the_pull_command_and_nothing_runs`, `test_a_missing_runtime_is_named` |
+| AC-22.6 Podman | `test_podman_takes_the_same_flags_and_keeps_the_owners_uid` |
+| AC-22.7 approval policy | `test_container_only_runs_a_contained_check_without_asking`, `test_container_only_still_asks_before_a_check_that_runs_as_the_owner`, `test_by_default_a_contained_check_asks_and_the_prompt_says_where_it_runs`, `test_the_stored_option_survives_a_resume` |
+| AC-22.7b `.cadre/checks.yaml` checks are validated too (credential-name env refused) | `test_containers::test_a_credential_name_cannot_be_allowlisted` covers the model; `.cadre/checks.yaml` goes through the same `CheckSpec.model_validate` (project.py load, runs.py rebuild) |
+| ADR-031 a check cannot make Cadre's git run planted code | `test_project::test_cadres_commit_never_runs_what_a_check_planted_in_git` (git-directory and repointed-file, each with a control that plain git *does* run it), `test_a_check_that_changes_git_is_failed_and_the_pointer_restored` |
+| AC-22.8 containment, real containers | `tests/test_containment.py` in CI job `containment` (Docker and Podman, Ubuntu): network, writes outside `/work`, planted key, fork bomb, memory cap, timeout kill, and the M11 unit converter's tests |
+| AC-22.9 front ends show the runner | extension `format.test.ts` ("check, review and vote events"); dashboard `where()` and MCP `DATA_KEYS` by inspection |
 
 ## Live regressions (M5, 2026-09-17)
 
@@ -147,6 +159,11 @@ Each is a test built from what a real model or provider did:
    Fixed, with a friendlier message and a test.
 
 ## Not covered yet
+
+- Containment on Docker Desktop (Windows, macOS) and Podman outside Linux: the hostile probes run
+  in Linux CI only. On this laptop one normal check ran in Docker Desktop (2026-09-19).
+- A container check inside a real Cadre run with a live model (the policy is tested with a
+  scripted model and a stubbed runner).
 
 - The dashboard in a browser (the Chrome extension was not connected on 2026-09-16 or 2026-09-17).
 - `cadre provider add` against a live endpoint (hidden prompt, keyring write on Windows).
