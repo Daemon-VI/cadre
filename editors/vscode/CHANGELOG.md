@@ -1,8 +1,9 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 1.3.0 — 2026-09-20
 
-First version (Cadre distribution D4, FR-19).
+First published version (Cadre distribution D4, FR-19). The extension's version tracks the
+Cadre engine it was built against, so it starts at 1.3.0 rather than 0.1.0.
 
 - The run view says where each check ran: as you, or in Docker or Podman with its image and no
   network (Cadre M12). The approval's modal lists the same for every check.

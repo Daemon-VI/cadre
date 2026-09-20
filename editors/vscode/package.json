@@ -2,8 +2,9 @@
   "name": "cadre",
   "displayName": "Cadre",
   "description": "Run an organisation of AI agents on your free model keys: watch runs live, approve gates, review the branch a run wrote.",
-  "version": "0.1.0",
+  "version": "1.3.0",
   "publisher": "daemon-vi",
+  "icon": "media/icon.png",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
