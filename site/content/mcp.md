@@ -5,8 +5,8 @@ description: Let Claude Code, VS Code, Cursor, Windsurf or Google Antigravity st
 
 # AI editors (MCP)
 
-`cadre mcp` is an MCP server over stdio with five tools: `cadre_list_orgs`, `cadre_forecast`,
-`cadre_start_run`, `cadre_run_status` and `cadre_usage`. It starts `cadre serve` in the background
+`cadre mcp` is an MCP server over stdio with six tools: `cadre_list_orgs`, `cadre_forecast`,
+`cadre_start_run`, `cadre_run_status`, `cadre_usage` and the read-only `cadre_memory_list`. It starts `cadre serve` in the background
 when it isn't running, so runs outlive the editor.
 
 > **It can't approve anything.** When a run waits for an approval, you approve it yourself with

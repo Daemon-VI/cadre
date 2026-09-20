@@ -235,8 +235,9 @@ with local paths generalised.
   from environment variables.
 
 ### FR-17 MCP server
-- **AC-17.1** `cadre mcp` serves MCP over stdio with exactly five tools: `cadre_forecast`,
-  `cadre_start_run`, `cadre_run_status`, `cadre_usage`, `cadre_list_orgs`.
+- **AC-17.1** `cadre mcp` serves MCP over stdio with exactly six tools: `cadre_forecast`,
+  `cadre_start_run`, `cadre_run_status`, `cadre_usage`, `cadre_list_orgs` and (since M14, FR-24)
+  the read-only `cadre_memory_list`.
 - **AC-17.2** It is a client of `cadre serve`, which it starts detached when none answers; runs
   outlive the editor.
 - **AC-17.3** No approval of any kind can be granted over MCP; a waiting run's status names

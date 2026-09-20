@@ -3,8 +3,8 @@
 _Each snippet was checked against the host's own documentation on 2026-09-18 (links below).
 Hosts change their config formats; if one stops working, the linked page is the authority._
 
-`cadre mcp` is an MCP server over stdio with five tools: `cadre_list_orgs`, `cadre_forecast`,
-`cadre_start_run`, `cadre_run_status` and `cadre_usage`. It starts `cadre serve` in the background
+`cadre mcp` is an MCP server over stdio with six tools: `cadre_list_orgs`, `cadre_forecast`,
+`cadre_start_run`, `cadre_run_status`, `cadre_usage` and the read-only `cadre_memory_list`. It starts `cadre serve` in the background
 when it isn't running. **On Windows**, hosts stop that auto-started server when the session
 ends, and a run then shows as interrupted until `cadre resume <id>` continues it. Start
 `cadre serve` yourself (or let the VS Code extension start it) so runs outlive the editor.

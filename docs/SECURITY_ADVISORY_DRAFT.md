@@ -1,7 +1,8 @@
 # Security advisory (DRAFT — for Rithik to review and publish)
 
-Create this under the repository's **Security → Advisories → New draft advisory** (or with
-`gh api`), review, then publish. It is not published by writing this file.
+**A private draft now exists:** [GHSA-3cxq-9h5r-3ccw](https://github.com/Daemon-VI/cadre/security/advisories/GHSA-3cxq-9h5r-3ccw)
+(created 2026-09-20 from this file). It is **private** until Rithik reviews it and presses
+**Publish**; requesting a CVE is also his act. Writing this file publishes nothing.
 
 ---
 
@@ -9,8 +10,10 @@ Create this under the repository's **Security → Advisories → New draft advis
 - **Package:** `cadre-ai`
 - **Affected versions:** `>= 1.0.0, < 1.1.0` (i.e. 1.0.0 and 1.0.1)
 - **Patched version:** `1.1.0`
-- **Severity:** Low (CVSS v3.1 base 4.2 — suggested vector
-  `AV:L/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:N`; adjust after review)
+- **Severity:** **Medium** — GitHub scored the vector
+  `CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:N` at base **4.7** when the draft was created.
+  (An earlier version of this file said "Low, 4.2"; that did not match this vector. Change the
+  vector if you disagree with the impact rating — `I:H` is what pushes it to Medium.)
 - **CWE:** CWE-862 Missing Authorization
 - **Title:** MCP `cadre_start_run` could skip the human `exec` approval, running model-written
   checks unapproved

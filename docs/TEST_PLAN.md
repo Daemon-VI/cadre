@@ -102,7 +102,7 @@ the `..` tests exercise.
 | AC-16.1 wheel runs a demo | `tools/wheel_smoke.py` (CI `wheel`, Ubuntu and Windows) |
 | AC-16.2…16.4 PyPI, standalone builds, image | `release.yml`: tag = version check, TestPyPI → PyPI, `packaging/build_binary.py` smoke (`--version` + demo) on three OSs, image smoke (uid 10001, demo run) |
 | AC-16.3 frozen-build behaviour | `test_a_frozen_build_runs_checks_with_the_python_on_path`, `test_version_flag` |
-| AC-17.1 five tools, none can approve | `test_mcp::test_exactly_five_tools_and_none_can_approve` |
+| AC-17.1 six tools, none can approve | `test_mcp::test_exactly_the_read_and_run_tools_and_none_can_approve` |
 | AC-17.2 client of `cadre serve`, autostart | `test_autostart_starts_serve_when_nothing_answers`; `tools/mcp_smoke.py` (real stdio) |
 | AC-17.3 approvals stay with the human | `test_a_run_waits_for_a_human_and_mcp_cannot_open_the_gate` |
 | AC-17.4 project default | `test_start_run_defaults_to_the_hosts_first_root` (roots round-trip, cwd repo, none, `""`) |

@@ -3,6 +3,14 @@
 _2026-09-17 · v0.1 → v1.0 programme (`MASTER_PROMPT.md`). Status with evidence is in
 `PROJECT_STATE.md`; decisions are in `ARCHITECTURE.md` (ADR numbers below point there)._
 
+> **v1 is feature-complete and the project is in maintenance (2026-09-20, 1.3.0).** M5–M14 are done
+> and released; of the distribution track, **D0–D3 and D5 are released**, **D4 (the VS Code
+> extension) is built but unpublished** (it needs Rithik's Marketplace/Open VSX tokens), D6 was
+> skipped by his call and D7 deferred. **M13.1 (OIDC SSO)**, **M15 (web research tool)**
+> and **M16 (hosted deployment)** are designed but **not started**, and M13.1 stays a prerequisite
+> of M16 — single sign-on only matters once Cadre is hosted. Nothing below is scheduled; each would
+> get its own prompt file if Rithik picks it up.
+
 ## Order, and why this order
 
 A team of agents on free keys fails by **rate limit** before it fails for any other reason, and on
@@ -34,9 +42,9 @@ provider, waiting for resets when a day runs out.* The order follows from what e
 | **M11** | Capstone (build one project, finish another, free keys only) and v1.0 release | — | capstone done 2026-09-18 (both succeeded); release pending the definition-of-done items in PROJECT_STATE |
 | **M12** | Container runner for checks | FR-22 · ADR-031 | done 2026-09-19; **released in 1.1.0** (containment tested in Linux CI under Docker and Podman; one check run in Docker Desktop on the laptop) |
 | **M13** | Multi-user organisations | FR-23 · ADR-032/033/034 | **done 2026-09-19** except OIDC: users, roles, hashed tokens, RBAC, audit (phase 1); teams, per-team budgets and model allowances, action routing (phase 2). OIDC SSO deferred to M13.1, a prerequisite of M16 |
-| M14 | Memory across runs | FR-24 · ADR-036 | **done 2026-09-19** (files, deterministic selection under a cap, `memory` approval, retrospective, privacy, ledger + forecast; unreleased). Live n=1 showed no benefit on a task the model already got right — recorded plainly |
-| M15 | Web research tool | — | **next** |
-| M16 | Hosted deployment | — | after v1.0 |
+| **M14** | Memory across runs | FR-24 · ADR-036 | **done 2026-09-19; released in 1.3.0 on 2026-09-20** (files, deterministic selection under a cap, `memory` approval, retrospective, privacy, ledger + forecast). Live n=1 showed no benefit on a task the model already got right — recorded plainly |
+| M15 | Web research tool | — | designed, **not started** |
+| M16 | Hosted deployment | — | designed, **not started** (needs M13.1 OIDC first) |
 
 **Deviation, recorded 2026-09-17.** M5 is blocked, not skipped. The Groq key was copied into
 Cadre's credential entry, but the session's auto-mode safety classifier refuses every command that
@@ -113,7 +121,8 @@ role, independence, check results, repairs and 429s. Then `claim-auditor`, versi
   builders and managers under a hard per-call token cap; deterministic selection (no embeddings);
   human + model-proposed entries behind a `memory` approval that cannot be granted over MCP; every
   entry passes the `check_history` key scan; memory tokens shown in the ledger and forecast. Files
-  before a vector database, because every token of memory is replayed on every call. Unreleased.
+  before a vector database, because every token of memory is replayed on every call. Released in
+  1.3.0 on 2026-09-20; `v1` moved to it.
 - **M15 — web research tool.** `fetch_url` / `search` with fetched text treated strictly as
   data, domain allow lists and size caps.
 - **M16 — hosted deployment.** Dockerfile, optional Postgres, TLS guidance, M13's auth in front
@@ -135,7 +144,7 @@ had been released, and every distribution feature was already on `main`. So both
 |---|---|---|---|
 | **D0** | Open-source readiness: Apache-2.0, README for strangers, community files, CI matrix, cross-platform scheduler, `--allowed-host`, history/privacy scans, `/api/v1` | FR-14, FR-15 | built 2026-09-18; CI green on three OSs × two Pythons and the full-history gitleaks scan is clean (2026-09-19); **public since 2026-09-19** |
 | **D1** | Package the engine: wheel smoke test, PyPI trusted publishing (`cadre-ai`), PyInstaller builds, GHCR image | FR-16 | **published 1.0.0 on 2026-09-19**: PyPI and TestPyPI (`cadre-ai`, trusted publishing), GHCR (`ghcr.io/daemon-vi/cadre`, public), standalone builds on the GitHub Release; each checked from a clean environment (PROJECT_STATE "Published channels") |
-| **D2** | MCP server (`cadre mcp`, five tools, no approvals over MCP) | FR-17 | built 2026-09-18; **from PyPI, 2026-09-19:** tools called in Claude Code 2.1.278, and 5 tools discovered by VS Code 1.138's MCP client (an agent-mode call needs Rithik's Copilot sign-in); Cursor, Windsurf and Antigravity unverified |
+| **D2** | MCP server (`cadre mcp`, six tools since M14, no approvals over MCP) | FR-17 | built 2026-09-18; **from PyPI, 2026-09-19:** tools called in Claude Code 2.1.278, and 5 tools discovered by VS Code 1.138's MCP client (that was before M14 added the sixth, `cadre_memory_list`) (an agent-mode call needs Rithik's Copilot sign-in); Cursor, Windsurf and Antigravity unverified |
 | **D3** | GitHub Action (project mode on the checkout → PR; trusted triggers only) | FR-18 | **verified 2026-09-19** on `Daemon-VI/cadre-action-demo`: PR #2 (Groq only, ~7 min) and PR #3 (Gemini + Groq, independent review, ~75 s), all 7 tests pass on both branches; the first two runs found four bugs, all fixed; `v1` tag and Marketplace listing (github.com/marketplace/actions/cadre-finish-this-project) since 1.0.0 |
 | **D4** | VS Code extension, published to the Marketplace and Open VSX | FR-19 | built 2026-09-18; 72 unit tests + 4 integration tests; **seen on screen 2026-09-19** (Forecast → Start run → live view → Review branch), which found the exec-approval focus hazard, fixed in b2c0bae; not published (`VSCE_PAT` / `OVSX_PAT` not set) |
 | **D5** | Docs site on GitHub Pages | FR-20 | built 2026-09-18 (nine pages, links checked, real-run replay); **live 2026-09-19** at daemon-vi.github.io/cadre |

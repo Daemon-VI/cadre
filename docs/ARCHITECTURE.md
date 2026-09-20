@@ -360,7 +360,8 @@ protected `pypi` environment; unsigned binaries trigger SmartScreen/Gatekeeper a
 so. **Rejected.** *Signing certificates now* — they cost money; Rithik's decision.
 
 ### ADR-027 — MCP over stdio, and no approvals over MCP (FR-17)
-**Decision.** `cadre mcp` speaks MCP over stdio using the official Python SDK, with five tools,
+**Decision.** `cadre mcp` speaks MCP over stdio using the official Python SDK, with six tools
+(five at 1.0.0; M14 added the read-only `cadre_memory_list`),
 because every schema is replayed in the host's context too. It is a client of `cadre serve`
 (started detached when none answers), so a run survives the editor closing. **No approval of any
 kind is granted over MCP** — neither `exec` approvals (they let model-written code run) nor gate
