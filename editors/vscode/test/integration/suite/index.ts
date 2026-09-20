@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import * as vscode from "vscode";
 
-const EXTENSION_ID = "daemon-vi.cadre";
+const EXTENSION_ID = "daemon-vi.cadre-ai";
 const tests: [string, () => Promise<void>][] = [];
 const test = (name: string, fn: () => Promise<void>) => tests.push([name, fn]);
 

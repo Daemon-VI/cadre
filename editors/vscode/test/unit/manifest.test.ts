@@ -29,8 +29,12 @@ test("no setting could hold a token or a key (Settings Sync would upload it)", (
 
 test("marketplace identity and zero runtime dependencies", () => {
   assert.equal(pkg.publisher, "daemon-vi");
-  assert.equal(pkg.name, "cadre");
+  // the Marketplace requires a globally unique `name`, and plain "cadre" is taken by another
+  // publisher, so the extension ships under the PyPI distribution's name (2026-09-20)
+  assert.equal(pkg.name, "cadre-ai");
   assert.equal(pkg.license, "Apache-2.0");
+  assert.equal(pkg.icon, "media/icon.png");
+  assert.ok(fs.existsSync(path.join(ROOT, "media", "icon.png")));
   assert.equal(pkg.dependencies, undefined);
   assert.match(pkg.engines.vscode, /^\^1\.\d+\.\d+$/);
   assert.ok(fs.existsSync(path.join(ROOT, "LICENSE")));
