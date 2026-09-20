@@ -32,6 +32,8 @@ test("marketplace identity and zero runtime dependencies", () => {
   // the Marketplace requires a globally unique `name`, and plain "cadre" is taken by another
   // publisher, so the extension ships under the PyPI distribution's name (2026-09-20)
   assert.equal(pkg.name, "cadre-ai");
+  // the Marketplace also enforces a globally unique displayName, and plain "Cadre" is taken
+  assert.equal(pkg.displayName, "Cadre AI");
   assert.equal(pkg.license, "Apache-2.0");
   assert.equal(pkg.icon, "media/icon.png");
   assert.ok(fs.existsSync(path.join(ROOT, "media", "icon.png")));

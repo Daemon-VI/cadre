@@ -1,6 +1,6 @@
 {
   "name": "cadre-ai",
-  "displayName": "Cadre",
+  "displayName": "Cadre AI",
   "description": "Run an organisation of AI agents on your free model keys: watch runs live, approve gates, review the branch a run wrote.",
   "version": "1.3.0",
   "publisher": "daemon-vi",
