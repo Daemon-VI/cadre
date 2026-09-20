@@ -1,3 +1,3 @@
 """Cadre — run an organisation of AI agents on the free model APIs you already have."""
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
