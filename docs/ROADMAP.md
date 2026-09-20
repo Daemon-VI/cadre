@@ -4,8 +4,8 @@ _2026-09-17 · v0.1 → v1.0 programme (`MASTER_PROMPT.md`). Status with evidenc
 `PROJECT_STATE.md`; decisions are in `ARCHITECTURE.md` (ADR numbers below point there)._
 
 > **v1 is feature-complete and the project is in maintenance (2026-09-20, 1.3.0).** M5–M14 are done
-> and released; of the distribution track, **D0–D3 and D5 are released**, **D4 (the VS Code
-> extension) is built but unpublished** (it needs Rithik's Marketplace/Open VSX tokens), D6 was
+> and released, and the distribution track **D0–D5 is now fully released** — D4, the VS Code
+> extension, went to the Marketplace and Open VSX as `daemon-vi.cadre-ai` on 2026-09-20. D6 was
 > skipped by his call and D7 deferred. **M13.1 (OIDC SSO)**, **M15 (web research tool)**
 > and **M16 (hosted deployment)** are designed but **not started**, and M13.1 stays a prerequisite
 > of M16 — single sign-on only matters once Cadre is hosted. Nothing below is scheduled; each would
@@ -146,7 +146,7 @@ had been released, and every distribution feature was already on `main`. So both
 | **D1** | Package the engine: wheel smoke test, PyPI trusted publishing (`cadre-ai`), PyInstaller builds, GHCR image | FR-16 | **published 1.0.0 on 2026-09-19**: PyPI and TestPyPI (`cadre-ai`, trusted publishing), GHCR (`ghcr.io/daemon-vi/cadre`, public), standalone builds on the GitHub Release; each checked from a clean environment (PROJECT_STATE "Published channels") |
 | **D2** | MCP server (`cadre mcp`, six tools since M14, no approvals over MCP) | FR-17 | built 2026-09-18; **from PyPI, 2026-09-19:** tools called in Claude Code 2.1.278, and 5 tools discovered by VS Code 1.138's MCP client (that was before M14 added the sixth, `cadre_memory_list`) (an agent-mode call needs Rithik's Copilot sign-in); Cursor, Windsurf and Antigravity unverified |
 | **D3** | GitHub Action (project mode on the checkout → PR; trusted triggers only) | FR-18 | **verified 2026-09-19** on `Daemon-VI/cadre-action-demo`: PR #2 (Groq only, ~7 min) and PR #3 (Gemini + Groq, independent review, ~75 s), all 7 tests pass on both branches; the first two runs found four bugs, all fixed; `v1` tag and Marketplace listing (github.com/marketplace/actions/cadre-finish-this-project) since 1.0.0 |
-| **D4** | VS Code extension, published to the Marketplace and Open VSX | FR-19 | built 2026-09-18; 72 unit tests + 4 integration tests; **seen on screen 2026-09-19** (Forecast → Start run → live view → Review branch), which found the exec-approval focus hazard, fixed in b2c0bae; not published (`VSCE_PAT` / `OVSX_PAT` not set) |
+| **D4** | VS Code extension, published to the Marketplace and Open VSX | FR-19 | built 2026-09-18; 72 unit tests + 4 integration tests; **seen on screen 2026-09-19** (Forecast → Start run → live view → Review branch), which found the exec-approval focus hazard, fixed in b2c0bae; **PUBLISHED 2026-09-20** to both registries as `daemon-vi.cadre-ai` v1.3.0 |
 | **D5** | Docs site on GitHub Pages | FR-20 | built 2026-09-18 (nine pages, links checked, real-run replay); **live 2026-09-19** at daemon-vi.github.io/cadre |
 | **D6** | Desktop app (Tauri 2 + PyInstaller sidecar) — only on Rithik's yes | FR-21 | **skipped** 2026-09-18 (Rithik): the dashboard, the extension and MCP cover it; unsigned installers would warn |
 | **D7** | Hosted website — **not in this programme**: a public server would run strangers' model-written code and hold their keys, so it stays behind M12 (sandboxed checks) and M13 (user accounts) | — | deferred |

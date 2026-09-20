@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-20 (**1.3.0 released** — ships M14, memory across runs; `v1` moved to 1.3.0. **v1 is feature-complete; the project is in maintenance.** M13.1/M15/M16 are designed, not started.)_
+_Last updated: 2026-09-20 (**1.3.0 released** — ships M14, memory across runs; `v1` moved to 1.3.0; the **VS Code extension is published** as `daemon-vi.cadre-ai`. **v1 is feature-complete; the project is in maintenance.** M13.1/M15/M16 are designed, not started.)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -15,7 +15,7 @@ some verifying, some deciding". The refined statement and the three design drive
 
 ## Status: 1.3.0 released (M14 shipped); `v1` on 1.3.0; v1 feature-complete, in maintenance
 _One release for the engine (v1.0 programme, M5–M11) and distribution (D0–D3, D5; the VS Code
-extension, D4, is built but not published); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
+extension, D4, published 2026-09-20); see "1.0.0 release" below. The v0.1.0 section that follows is the offline record of 2026-09-16 and is kept as history._
 
 ## 1.3.0 release (2026-09-20, `PROMPT_1_3_0.md` §1)
 
@@ -47,6 +47,27 @@ to `@v1`, and the Marketplace page lists `v1.3.0`. Issue #12 and PR #13 closed; 
 [GHSA-3cxq-9h5r-3ccw](https://github.com/Daemon-VI/cadre/security/advisories/GHSA-3cxq-9h5r-3ccw).
 GitHub scored the suggested vector at **4.7 / Medium**, not the "Low, 4.2" the draft file used to
 claim; the file now says so. Reviewing, requesting a CVE and pressing Publish are Rithik's acts.
+
+## VS Code extension published (2026-09-20, D4, FR-19)
+
+Published to **both** registries from the `vscode-v1.3.0` tag, run `35515512773`:
+`🚀 Published daemon-vi.cadre-ai v1.3.0` (Open VSX) and the Marketplace query returns
+`daemon-vi.cadre-ai | Cadre AI | v1.3.0`. Install with `ext install daemon-vi.cadre-ai`, or search
+**Cadre AI**. Open VSX took ~2 minutes to index after the upload reported success.
+
+**It is `cadre-ai`, not `cadre`.** The Marketplace enforces **globally unique** `name` *and*
+`displayName` — they are not namespaced by publisher, unlike npm. Both `cadre` and `Cadre` are
+owned by an unrelated publisher (`Cadre.cadre`), so the first two publish attempts failed with
+"The extension 'cadre' already exists" and then "This extension display name is taken". The
+extension now ships as `name: cadre-ai` / `displayName: "Cadre AI"`, matching the PyPI
+distribution; `tests/unit/manifest.test.ts` pins both so it cannot regress. Nothing was published
+on the failed attempts (the Open VSX step runs after the Marketplace step and was skipped), so the
+`vscode-v1.3.0` tag was moved twice while it had published nothing.
+
+The extension version tracks the engine, so it starts at **1.3.0** rather than 0.1.0, and it now
+carries the Cadre logo as its icon (`media/icon.png`, rasterised from `site/assets/logo.svg`).
+The `vscode-marketplace` environment was created by this first run and has **no protection rules
+and no branch policy**.
 
 ## M14 — memory across runs — DONE 2026-09-19, released in 1.3.0 (`PROMPT_M14.md` §6, FR-24, ADR-036)
 
@@ -296,7 +317,7 @@ re-run on the same tag after Rithik fixed each site's pending publisher: TestPyP
 | GitHub Action | `v1` → 18e4aec (1.0.1) | `uses: Daemon-VI/cadre@v1` | since 1.0.1: issue #6 → PR #7, one-line title, body ends `Closes #6`. Before: `cadre-action-demo` switched to `@v1`; issue #4 (labelled) → run `20260919-101549-2299e0` succeeded → PR #5 (+1 line, a docstring; 19 calls, 33,835 + 1,554 tokens; reviewer used Qwen and gpt-oss) |
 | TestPyPI | 1.0.1 | test.pypi.org/project/cadre-ai | 1.0.1: first attempt, same SHA-256 as PyPI. 1.0.0: fourth attempt at the job, after Rithik corrected the pending publisher (the first three: `invalid-publisher`). Both files' SHA-256 match the GitHub Release (`6c7f593f…` wheel, `fcbb4de9…` sdist) |
 | **PyPI** | **1.0.1** | pypi.org/project/cadre-ai | 1.0.1: first attempt; clean-cache `uvx --from cadre-ai@1.0.1` → `cadre 1.0.1`, demo run succeeded. 1.0.0: second attempt, after Rithik corrected the pypi.org publisher (the first: `invalid-publisher` for environment `pypi`; nothing uploaded). Same SHA-256 as above. From a clean uv cache and a new `CADRE_HOME`: `uvx --from cadre-ai cadre --version` → `cadre 1.0.0`, a `decision-board --demo` run succeeded, and `uvx cadre-ai --version` works too. `pipx` is not installed here, so `pipx install` was not tried |
-| VS Code Marketplace / Open VSX | — | — | not published: `VSCE_PAT` and `OVSX_PAT` are not set (`gh secret list` empty on 2026-09-19, and no `vscode-marketplace` environment) |
+| VS Code Marketplace / Open VSX | 1.3.0 | `daemon-vi.cadre-ai` | **published 2026-09-20** to both, from the `vscode-v1.3.0` tag; see "VS Code extension published" |
 | GitHub Marketplace | v1.0.1 | github.com/marketplace/actions/cadre-finish-this-project | listed by Rithik on the 1.0.0 release page (2026-09-19); on 2026-09-19 the page showed "v1.0.1 Latest" with no further action |
 
 ### Seen on screen for the first time (2026-09-19)
@@ -827,7 +848,7 @@ State lives in **`~/.cadre/`** (`CADRE_HOME` overrides): `config.yaml` (provider
 | GHCR | **1.3.0** | `ghcr.io/daemon-vi/cadre` (non-root, state in `/data`) |
 | GitHub Action | **`v1` → 1.3.0** | Marketplace: "Cadre — finish this project" |
 | Docs site | live | daemon-vi.github.io/cadre (built from `site/` by the Docs workflow) |
-| VS Code extension | **not published** | built in `editors/vscode`; needs Rithik's tokens (below) |
+| VS Code extension | **1.3.0** | `ext install daemon-vi.cadre-ai` — [Marketplace](https://marketplace.visualstudio.com/items?itemName=daemon-vi.cadre-ai) and [Open VSX](https://open-vsx.org/extension/daemon-vi/cadre-ai) |
 
 Releasing is one thing: bump the version in `pyproject.toml` **and** `src/cadre/__init__.py`, add a
 dated `CHANGELOG.md` entry, commit, then push a `vX.Y.Z` tag — `release.yml` does the rest. **PyPI
@@ -864,10 +885,6 @@ measured benefit** on the one task it was tried on (n = 1) and costs ~94 tokens 
   [GHSA-3cxq-9h5r-3ccw](https://github.com/Daemon-VI/cadre/security/advisories/GHSA-3cxq-9h5r-3ccw).
   Review it, then press Publish (and request a CVE if wanted). Afterwards the GHSA link goes into
   `SECURITY.md` and the 1.1.0 entry in `CHANGELOG.md`.
-- **VS Code extension publish.** `gh secret list` is empty and the `vscode-marketplace` environment
-  does not exist. He creates the publisher `daemon-vi`, both tokens, and sets `VSCE_PAT` /
-  `OVSX_PAT` himself; then set the extension to 1.3.0 and push a `vscode-v1.3.0` tag. The Open VSX
-  namespace `daemon-vi` may need creating once.
 - **Agent-mode MCP call in VS Code** (needs his Copilot sign-in), and **Antigravity**, which he says
   he has but which was not found on this laptop.
 
