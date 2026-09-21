@@ -55,12 +55,23 @@ test("1.4.0: each panel command opens its own webview, once, even with no server
       ["cadre.showOrgs", "Cadre · Organisations"],
     ];
     const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs);
+    const isPanel = (title: string) => (t: vscode.Tab) => t.label === title && t.input instanceof vscode.TabInputWebview;
+    // The workbench's tab model catches up a moment after createWebviewPanel returns, so wait for
+    // the tab (up to 5 s) rather than reading it at once; a panel that never opens still fails.
+    const appears = async (title: string): Promise<boolean> => {
+      for (let waited = 0; waited < 5000; waited += 50) {
+        if (tabs().some(isPanel(title))) return true;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return tabs().some(isPanel(title));
+    };
     for (const [command, title] of panels) {
       await vscode.commands.executeCommand(command);
-      assert.ok(tabs().some((t) => t.label === title && t.input instanceof vscode.TabInputWebview),
-        `${command} opened a webview titled "${title}"`);
+      assert.ok(await appears(title),
+        `${command} opened a webview titled "${title}"; tabs now: ${JSON.stringify(tabs().map((t) => t.label))}`);
     }
     await vscode.commands.executeCommand("cadre.showUsage");
+    await new Promise((r) => setTimeout(r, 300));
     assert.equal(tabs().filter((t) => t.label === "Cadre · Usage").length, 1, "a second call reveals the same panel");
   } finally {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
