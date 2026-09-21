@@ -94,8 +94,10 @@ The server's home is `CADRE_HOME` (default `~/.cadre`). If you run Cadre with a 
   this machine — it is not a sandbox. The extension never starts a run with execution
   pre-approved. When a run first wants to run its checks, a notification says so; it never takes
   keyboard focus, so nothing typed into another window can answer it. **Review…** opens a modal
-  dialog that shows each check's name and its exact command from the organisation file; only an
-  explicit **Allow execution** click approves. Closing the dialog decides nothing (the run keeps waiting); **Reject** rejects.
+  dialog that shows each check's name and its exact command from the organisation file; only
+  choosing **Allow execution** there approves. It is the dialog's default button, so Enter chooses
+  it too — which is why the dialog opens only when you ask for it (Review…, Decide…), never from a
+  background check. Closing the dialog decides nothing (the run keeps waiting); **Reject** rejects.
 - **The run view and the panels** are webviews with a strict Content Security Policy: one
   script, identified by a per-load nonce, from the extension itself; no remote resources; no
   network access. All text an agent wrote is inserted as text (`textContent`), never parsed as

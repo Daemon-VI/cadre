@@ -33,11 +33,6 @@ export class Approvals implements vscode.Disposable {
     return this.pending.length;
   }
 
-  /** The latest pending approvals, as the poller last saw them (the Approvals panel's list). */
-  get items(): readonly Approval[] {
-    return this.pending;
-  }
-
   dispose(): void {
     this.changed.dispose();
   }

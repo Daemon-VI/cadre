@@ -205,6 +205,7 @@ interface StartForm {
   orgs: StartOrg[];
   orgKey: string;
   folderKey: string;
+  folderNames: string[];
 }
 
 let form: StartForm | undefined;
@@ -226,6 +227,7 @@ function buildStartForm(): StartForm {
     orgs: [],
     orgKey: "",
     folderKey: "",
+    folderNames: [],
   };
   f.goal.rows = 4;
   f.goal.maxLength = 4000;
@@ -284,7 +286,12 @@ function renderStart(v: StartView): void {
 
   const folderKey = `${v.trusted}|${v.folders.map((x) => x.name).join(",")}`;
   if (folderKey !== f.folderKey) {
-    const keep = f.folder.value;
+    // Follow the chosen folder by its name when the open folders change: its old index could now
+    // point at a different folder (one removed, or the list reordered) while the form still showed
+    // the old name. "No folder" stays "No folder".
+    const hadList = f.folderKey !== "";
+    const keptNone = hadList && f.folder.value === "-1";
+    const keptName = hadList ? f.folderNames[Number(f.folder.value)] : undefined;
     const opts = v.folders.map((x) => {
       const o = option(String(x.index), `${x.name} — a project run on a new branch`);
       o.disabled = !v.trusted;
@@ -293,8 +300,11 @@ function renderStart(v: StartView): void {
     opts.push(option("-1", "No folder — a fresh workspace"));
     f.folder.replaceChildren(...opts);
     f.folderKey = folderKey;
-    const valid = (val: string) => val === "-1" || (v.trusted && v.folders.some((x) => String(x.index) === val));
-    f.folder.value = keep && valid(keep) ? keep : v.trusted && v.folders.length ? "0" : "-1";
+    f.folderNames = v.folders.map((x) => x.name);
+    const found = keptName === undefined ? undefined : v.folders.find((x) => x.name === keptName);
+    f.folder.value = keptNone || !v.trusted ? "-1"
+      : found ? String(found.index)
+      : v.folders.length ? "0" : "-1";
     f.folderNote.textContent = !v.trusted
       ? "This workspace is not trusted, so a run can't work on its folders. Trust it, or start with no folder."
       : !v.folders.length ? "No folder is open; the run gets a fresh workspace." : "";

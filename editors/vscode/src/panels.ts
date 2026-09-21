@@ -114,10 +114,15 @@ class HostPanel {
   private schedule(): void {
     if (this.kind !== "usage" || this.disposed) return;
     if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => {
-      if (this.panel.visible) void this.reloadIfUp();
-      else this.schedule();
-    }, USAGE_EVERY_MS);
+    this.timer = setTimeout(() => void this.tick(), USAGE_EVERY_MS);
+  }
+
+  /** One self-refresh tick. A load re-arms the timer itself; anything else (hidden, or no server
+   *  answering) re-arms it here, so one missed tick never switches the self-refresh off. */
+  private async tick(): Promise<void> {
+    if (this.disposed) return;
+    if (this.panel.visible && (await this.deps.cmd.server.isUp())) await this.load();
+    else this.schedule();
   }
 
   private async build(): Promise<PanelView> {
@@ -282,8 +287,16 @@ class HostPanel {
 
 export class Panels implements vscode.Disposable {
   private readonly open = new Map<PanelKind, HostPanel>();
+  private readonly subs: vscode.Disposable[];
 
-  constructor(private readonly extensionUri: vscode.Uri, private readonly deps: PanelDeps) {}
+  constructor(private readonly extensionUri: vscode.Uri, private readonly deps: PanelDeps) {
+    // The new-run form lists the open folders by position: when they change (or the workspace
+    // becomes trusted), re-post the list at once so the form never offers a stale one.
+    this.subs = [
+      vscode.workspace.onDidChangeWorkspaceFolders(() => this.refresh("start")),
+      vscode.workspace.onDidGrantWorkspaceTrust(() => this.refresh("start")),
+    ];
+  }
 
   show(kind: PanelKind, org?: string): void {
     const existing = this.open.get(kind);
@@ -322,6 +335,7 @@ export class Panels implements vscode.Disposable {
   }
 
   dispose(): void {
+    for (const s of this.subs) s.dispose();
     for (const p of [...this.open.values()]) p.panel.dispose();
     this.open.clear();
   }

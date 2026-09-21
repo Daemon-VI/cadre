@@ -1,4 +1,4 @@
-# Only the two bundles, the media and the docs ship in the .vsix. vsce applies every `!` pattern
+# Only the three bundles, the media and the docs ship in the .vsix. vsce applies every `!` pattern
 # after all ignores, so the bundles are named exactly (a `!dist/**` would bring source maps back).
 **
 !dist/extension.js

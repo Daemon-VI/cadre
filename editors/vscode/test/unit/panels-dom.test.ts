@@ -302,6 +302,27 @@ test("new run: without a key only the demo; an untrusted workspace can only run 
   assert.deepEqual(posted.at(-1), { type: "start", org: "my-team", goal: "Pick one", folder: -1, private: false, demo: true });
 });
 
+test("new run: the chosen folder is followed by name when the open folders change", () => {
+  const { send, all } = load();
+  const view = (...names: string[]): PanelHostMessage =>
+    ({ type: "view", data: { kind: "start", view: { ...START, folders: names.map((name, index) => ({ index, name })) } } });
+  send(view("app", "docs"));
+  const folder = all("SELECT")[1];
+  folder.value = "1"; // docs
+  // "app" is closed, so docs moves to index 0: the form must still mean docs, not whatever index 1 now is
+  send(view("docs"));
+  assert.equal(folder.value, "0");
+  send(view("web", "docs"));
+  assert.equal(folder.value, "1", "reordered: still docs");
+  folder.value = "-1";
+  send(view("docs"));
+  assert.equal(folder.value, "-1", "\"No folder\" stays \"No folder\"");
+  folder.value = "0"; // docs
+  send(view("web", "api"));
+  assert.equal(folder.value, "0", "the chosen folder closed: back to the first, which the list now shows");
+  assert.deepEqual(folder.find((o) => o.tagName === "OPTION").map((o) => o.value), ["0", "1", "-1"]);
+});
+
 test("new run: a prefill selects the org, busy disables the buttons, a forecast is shown", () => {
   const { app, send, byLabel, all } = load();
   send({ type: "view", data: { kind: "start", view: { ...START, prefillOrg: "project-finisher" } } });

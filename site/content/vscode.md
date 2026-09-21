@@ -51,5 +51,7 @@ Since 1.4.0, five **panels** open as editor tabs:
 - **An exec approval shows the exact command, and only when you ask.** Before a check may run code
   the agents wrote, a notification says a run is waiting. It never takes keyboard focus, so a key
   you press in another window can't answer it. **Review…** opens a modal with the check's name and
-  its exact command from the org file, and nothing runs until you click **Allow execution**. Gate
-  approvals arrive as notifications. No panel and no form can pre-approve running code.
+  its exact command from the org file, and nothing runs until you choose **Allow execution**. That
+  is the dialog's default button, so Enter chooses it too — which is why the dialog opens only when
+  you ask for it. Gate approvals arrive as notifications. No panel and no form can pre-approve
+  running code.
