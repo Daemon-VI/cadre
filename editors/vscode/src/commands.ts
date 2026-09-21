@@ -1,7 +1,7 @@
 // The palette commands (AC-19.3) other than Review branch (review.ts).
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
-import { ApiError, type CadreClient, type OrgSummary } from "./api";
+import { ApiError, type CadreClient, type OrgSummary, type StartRunBody } from "./api";
 import { cliInvocation, describeInvocation, findOnPath, isPresetId } from "./cli";
 import { brief, hasUsableProvider } from "./format";
 import type { Server } from "./server";
@@ -111,30 +111,35 @@ async function startRunWith(d: Deps, org: string, goal: string, folder: vscode.W
     if (pick !== "Run demo") return;
     demo = true;
   }
-  const body = { org, goal, project: folder.uri.fsPath, demo };
   try {
-    const { id } = await d.client.startRun(body);
-    d.refreshRuns();
-    d.openRun(id);
+    await launchRun(d, { org, goal, project: folder.uri.fsPath, demo });
   } catch (e) {
-    // The engine owns the dirty-tree rule (AC-8.2); its words are shown as they are.
-    const msg = (e as Error).message;
-    if (e instanceof ApiError && /uncommitted changes/i.test(msg)) {
-      const pick = await vscode.window.showErrorMessage(`Cadre: ${msg}`,
-        { modal: true, detail: "Starting from HEAD anyway means the run does not see your uncommitted changes." },
-        "Start from HEAD anyway");
-      if (pick !== "Start from HEAD anyway") return;
-      try {
-        const { id } = await d.client.startRun({ ...body, allow_dirty: true });
-        d.refreshRuns();
-        d.openRun(id);
-      } catch (e2) {
-        fail(e2);
-      }
-      return;
-    }
     fail(e);
   }
+}
+
+/**
+ * Start a run and open its view. When the engine refuses a folder with uncommitted changes (it owns
+ * that rule, AC-8.2, and its words are shown as they are), offer to start from HEAD instead.
+ * Returns the run id, or undefined if the person declined; any other failure is thrown so the
+ * caller can show it its own way (a notification from the palette, a notice in the new-run form).
+ */
+export async function launchRun(d: Deps, body: StartRunBody): Promise<string | undefined> {
+  let id: string;
+  try {
+    ({ id } = await d.client.startRun(body));
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (!(e instanceof ApiError && /uncommitted changes/i.test(msg))) throw e;
+    const pick = await vscode.window.showErrorMessage(`Cadre: ${msg}`,
+      { modal: true, detail: "Starting from HEAD anyway means the run does not see your uncommitted changes." },
+      "Start from HEAD anyway");
+    if (pick !== "Start from HEAD anyway") return undefined;
+    ({ id } = await d.client.startRun({ ...body, allow_dirty: true }));
+  }
+  d.refreshRuns();
+  d.openRun(id);
+  return id;
 }
 
 // ------------------------------------------------------------------ Add provider

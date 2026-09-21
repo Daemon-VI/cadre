@@ -1,0 +1,96 @@
+/* Panel webviews (extension 1.4.0), loaded after run.css. Every colour is an editor theme token, so
+   the panels follow dark, light and high-contrast themes. Severity is always a word as well as a
+   colour (the meters carry "near the cap" / "at the cap"), never colour alone. */
+
+.sub { margin: .3em 0 .6em; }
+.title .small { margin-left: auto; }
+.panel-body { margin-top: 4px; }
+.empty { color: var(--vscode-descriptionForeground); margin: 1.2em 0; }
+.hint { color: var(--vscode-descriptionForeground); font-size: .92em; margin: .3em 0; }
+.hidden { display: none !important; }
+
+/* notices: run.css paints every notice as an error; panels also post neutral and good ones */
+.notice { color: var(--vscode-foreground); padding: 6px 10px; border-left: 3px solid var(--vscode-textLink-foreground);
+  background: var(--vscode-textBlockQuote-background); margin: 8px 0; }
+.notice.good { border-left-color: var(--vscode-testing-iconPassed); }
+.notice.warn { border-left-color: var(--vscode-editorWarning-foreground); }
+.notice.bad { color: var(--vscode-errorForeground); border-left-color: var(--vscode-errorForeground); }
+
+.section-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.section-head .field { flex-direction: row; align-items: baseline; gap: 6px; margin: 0; }
+
+/* ---------------------------------------------------------------- usage meters */
+.meters { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.model {
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+.model.unusable { opacity: .7; }
+.model-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.meter { margin: 6px 0; }
+.meter-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: .95em; }
+.meter-label { min-width: 5.5em; color: var(--vscode-descriptionForeground); }
+.meter-value { font-variant-numeric: tabular-nums; }
+.track { height: 8px; border-radius: 4px; margin-top: 3px; overflow: hidden;
+  background: color-mix(in srgb, var(--vscode-progressBar-background) 22%, transparent); }
+.track.warn { background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 22%, transparent); }
+.track.hot { background: color-mix(in srgb, var(--vscode-errorForeground) 22%, transparent); }
+.fill { height: 100%; border-radius: 4px; background: var(--vscode-progressBar-background); }
+.fill.warn { background: var(--vscode-editorWarning-foreground); }
+.fill.hot { background: var(--vscode-errorForeground); }
+
+/* ---------------------------------------------------------------- tables */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; margin: 6px 0 12px; }
+th, td { text-align: left; padding: 3px 10px 3px 0; border-bottom: 1px solid var(--vscode-widget-border, transparent); }
+th { color: var(--vscode-descriptionForeground); font-weight: normal; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tfoot td { font-weight: 600; border-bottom: none; }
+
+/* ---------------------------------------------------------------- forms */
+.run-form, .memory-form { display: flex; flex-direction: column; gap: 10px; max-width: 760px; margin: 10px 0 18px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field-label { color: var(--vscode-descriptionForeground); }
+.check { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
+input, select, textarea {
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+  border-radius: 2px;
+  padding: 4px 6px;
+}
+textarea { resize: vertical; font-family: var(--vscode-font-family); }
+input[type="checkbox"] { padding: 0; }
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.about { margin: 2px 0 0; }
+.count { align-self: flex-end; font-variant-numeric: tabular-nums; font-size: .9em; }
+.count.over { color: var(--vscode-errorForeground); }
+button:disabled { opacity: .5; cursor: default; }
+.forecast pre { max-height: 320px; }
+
+/* ---------------------------------------------------------------- cards */
+.cards { list-style: none; padding: 0; margin: 6px 0 14px; display: flex; flex-direction: column; gap: 10px; }
+.card {
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+  border-left: 3px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+.card.exec, .card.proposed { border-left-color: var(--vscode-editorWarning-foreground); }
+.card.stale { opacity: .75; }
+.card-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.card-head h2 { margin: 0; }
+.card .actions { margin: 8px 0 0; }
+.prompt { margin: 8px 0; max-height: 260px; }
+.fact { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.errors { color: var(--vscode-errorForeground); }
+.skipped { margin-top: 18px; }
+.skipped li { color: var(--vscode-editorWarning-foreground); }
+
+/* high-contrast themes: give meter fills an edge, since fills may share the track's colour */
+@media (forced-colors: active) {
+  .fill { background: Highlight; }
+  .track { border: 1px solid CanvasText; }
+}

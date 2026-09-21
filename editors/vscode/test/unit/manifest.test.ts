@@ -46,3 +46,25 @@ test("the status bar opens the runs view that the manifest declares", () => {
   assert.ok(extensionSrc.includes('bar.command = "cadre.runs.focus"'));
   assert.ok(pkg.contributes.views.cadre.some((v: { id: string }) => v.id === "cadre.runs"));
 });
+
+// ------------------------------------------------------------------ extension 1.4.0 (the panels)
+const PANEL_COMMANDS = ["cadre.newRun", "cadre.showUsage", "cadre.showApprovals", "cadre.showMemory", "cadre.showOrgs"];
+
+test("1.4.0: the five panel commands are contributed, registered, and reachable from the Runs view", () => {
+  assert.equal(pkg.version, "1.4.0");
+  const contributed = pkg.contributes.commands.map((c: { command: string }) => c.command);
+  const menu = pkg.contributes.menus["view/title"].map((m: { command: string }) => m.command);
+  for (const id of PANEL_COMMANDS) {
+    assert.ok(contributed.includes(id), `${id} is contributed`);
+    assert.ok(extensionSrc.includes(`register("${id}"`), `${id} is registered in extension.ts`);
+    assert.ok(menu.includes(id), `${id} is in the Runs view's title menu`);
+  }
+});
+
+test("1.4.0: the panel bundle and stylesheet ship in the .vsix", () => {
+  const ignore = fs.readFileSync(path.join(ROOT, ".vscodeignore"), "utf8");
+  assert.ok(ignore.includes("!dist/webview/panels.js"), "a bundle not named in .vscodeignore is silently left out");
+  assert.ok(ignore.includes("!media/**"));
+  assert.ok(fs.existsSync(path.join(ROOT, "media", "panels.css")));
+  assert.ok(fs.readFileSync(path.join(ROOT, "esbuild.mjs"), "utf8").includes("src/webview/panels.ts"));
+});

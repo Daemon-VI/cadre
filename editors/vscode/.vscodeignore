@@ -3,6 +3,7 @@
 **
 !dist/extension.js
 !dist/webview/run.js
+!dist/webview/panels.js
 !media/**
 !package.json
 !README.md

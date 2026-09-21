@@ -39,3 +39,26 @@ export function runPanelHtml(o: { cspSource: string; nonce: string; scriptUri: s
 </body>
 </html>`;
 }
+
+/**
+ * A panel webview's document (extension 1.4.0): the same CSP as the run view, the run view's
+ * stylesheet as a base plus the panel stylesheet, and one nonce'd script. The panel's kind is not
+ * written here — it arrives with the first posted view, like all data.
+ */
+export function panelHtml(o: { cspSource: string; nonce: string; scriptUri: string; styleUris: string[]; title: string }): string {
+  const links = o.styleUris.map((u) => `<link rel="stylesheet" href="${attr(u)}">`).join("\n");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${attr(contentSecurityPolicy(o.cspSource, o.nonce))}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+${links}
+<title>${attr(o.title)}</title>
+</head>
+<body>
+<main id="app"><p class="muted">Loading…</p></main>
+<script nonce="${attr(o.nonce)}" src="${attr(o.scriptUri)}"></script>
+</body>
+</html>`;
+}

@@ -112,7 +112,8 @@ of it (ADR-024):
   [`examples/github-action/cadre.yml`](https://github.com/Daemon-VI/cadre/blob/main/examples/github-action/cadre.yml) and add a free key as a
   repository secret.
 - **VS Code extension:** `ext install daemon-vi.cadre-ai`, or search **Cadre AI** in the
-  Extensions pane. Published to the
+  Extensions pane. Runs, a live run view, and (since 1.4.0) panels for a new-run form, usage
+  meters, approvals, memory and organisations. Published to the
   [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=daemon-vi.cadre-ai) and
   [Open VSX](https://open-vsx.org/extension/daemon-vi/cadre-ai), so it installs in Cursor, Windsurf,
   Antigravity and VSCodium too. Source: [`editors/vscode`](https://github.com/Daemon-VI/cadre/tree/main/editors/vscode).

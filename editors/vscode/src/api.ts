@@ -34,7 +34,7 @@ export interface RunRow extends Totals {
 export interface Approval {
   id: string;
   run_id: string;
-  kind: string; // exec | gate | question
+  kind: string; // exec | gate | question | memory
   agent?: string | null;
   step?: string | null;
   prompt: string;
@@ -100,6 +100,13 @@ export interface QuotaRow {
   resets_in_s?: number | null;
 }
 
+export interface OrgAgent {
+  id: string;
+  role: string;
+  tier: string;
+  tools: string[];
+}
+
 export interface OrgSummary {
   name: string;
   source: string;
@@ -107,8 +114,57 @@ export interface OrgSummary {
   title?: string;
   description?: string;
   workflow?: string;
+  agents?: OrgAgent[];
   checks?: string[];
+  budget?: Record<string, unknown>;
   errors?: string[];
+}
+
+export interface OrgDetail extends OrgSummary {
+  yaml: string;
+}
+
+/** One row of `GET /usage` (forecast.usage_ledger): a model's use on one day against its caps. */
+export interface UsageRow {
+  day: string;
+  provider: string;
+  model: string;
+  requests: number;
+  tokens: number;
+  rpd: number | null;
+  tpd: number | null;
+  share: number | null;
+  day_reset?: string | null;
+  next_reset?: string | null;
+}
+
+/** A fact remembered across runs (M14, memory.Entry.as_dict). `approval` is set while it is a proposal. */
+export interface MemoryEntry {
+  id: string;
+  text: string;
+  scope: string;
+  tags: string[];
+  source: string;
+  date: string;
+  by: string;
+  pinned: boolean;
+  private: boolean;
+  approved: boolean;
+  approval?: string;
+}
+
+export interface MemoryList {
+  entries: MemoryEntry[];
+  skipped: string[];
+  scopes: string[];
+}
+
+export interface MemoryAddBody {
+  scope: string;
+  text: string;
+  tags?: string[];
+  pinned?: boolean;
+  private?: boolean;
 }
 
 export interface Preset {
@@ -144,6 +200,8 @@ export interface StartRunBody {
   project?: string;
   allow_dirty?: boolean;
   demo?: boolean;
+  /** Only providers that do not train on prompts (the engine's `privacy: private`, FR-12). */
+  private?: boolean;
 }
 
 export interface ForecastBody {
@@ -151,6 +209,7 @@ export interface ForecastBody {
   goal: string;
   project?: string;
   demo?: boolean;
+  private?: boolean;
 }
 
 export interface StreamItem {
@@ -254,16 +313,34 @@ export class CadreClient {
     return this.call("GET", `/runs/${enc(id)}/events?after=${Math.trunc(after)}&limit=${Math.trunc(limit)}`);
   }
   approvals(): Promise<Approval[]> { return this.call("GET", "/approvals?pending=true"); }
-  forecast(body: ForecastBody): Promise<ForecastResult> { return this.call("POST", "/forecast", body); }
+  usage(days = 7): Promise<UsageRow[]> { return this.call("GET", `/usage?days=${Math.trunc(days)}`); }
+  org(name: string): Promise<OrgDetail> { return this.call("GET", `/orgs/${enc(name)}`); }
+  memory(): Promise<MemoryList> { return this.call("GET", "/memory?pending=true"); }
+  removeMemory(id: string): Promise<{ id: string; removed: boolean }> { return this.call("DELETE", `/memory/${enc(id)}`); }
+
+  addMemory(body: MemoryAddBody): Promise<MemoryEntry> {
+    return this.call("POST", "/memory", {
+      scope: body.scope, text: body.text, tags: body.tags ?? [], pinned: !!body.pinned, private: !!body.private,
+    });
+  }
+
+  forecast(body: ForecastBody): Promise<ForecastResult> {
+    const wire: Record<string, unknown> = { org: body.org, goal: body.goal };
+    if (body.project !== undefined) wire.project = body.project;
+    if (body.demo) wire.demo = true;
+    if (body.private) wire.privacy = "private";
+    return this.call("POST", "/forecast", wire);
+  }
   cancel(id: string): Promise<{ cancelled: boolean }> { return this.call("POST", `/runs/${enc(id)}/cancel`); }
   resume(id: string): Promise<{ id: string; resumed: boolean }> { return this.call("POST", `/runs/${enc(id)}/resume`); }
 
   startRun(body: StartRunBody): Promise<{ id: string }> {
     // Only the fields StartRunBody allows go on the wire, whatever the caller's object carries.
-    const wire: StartRunBody = { org: body.org, goal: body.goal };
+    const wire: Record<string, unknown> = { org: body.org, goal: body.goal };
     if (body.project !== undefined) wire.project = body.project;
     if (body.allow_dirty) wire.allow_dirty = true;
     if (body.demo) wire.demo = true;
+    if (body.private) wire.privacy = "private";
     return this.call("POST", "/runs", wire);
   }
 

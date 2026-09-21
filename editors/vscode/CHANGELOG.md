@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.4.0 — 2026-09-21
+
+Five panels, each an editor tab (Command Palette, or the Runs view's title bar):
+
+- **New run…** — a single form: organisation, goal, folder (or none), offline demo model,
+  private. **Forecast** before you start. Keeps a half-typed goal across tab switches.
+- **Usage** — per-model meters against today's daily caps, stating their value and state in
+  words, plus a 1/7/14/30-day ledger with totals. Refreshes itself while visible.
+- **Approvals** — everything waiting, oldest first; **Decide…** opens the same dialog as a
+  notification, so nothing is approved from the page.
+- **Memory** — remembered facts by scope: add, delete, and decide a model's proposals. A proposal
+  whose approval has closed (for example after the database was reset) is marked and can be
+  deleted instead of being stuck.
+- **Organisations** — agents, roles, tools, checks and budget for yours and the templates.
+  **Edit YAML** opens your own org's file; templates open read-only. **New run with this org**.
+
+Also: a *private* option for runs and forecasts started from the extension, and memory
+proposals are labelled as such in notifications. Every panel follows the run view's rules — no
+token in any webview, text only via `textContent`, a fixed list of messages checked in the
+extension, a folder chosen by index rather than by path, and no way to approve from a page.
+
 ## 1.3.0 — 2026-09-20
 
 First published version (Cadre distribution D4, FR-19). The extension's version tracks the

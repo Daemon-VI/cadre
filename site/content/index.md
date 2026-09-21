@@ -63,7 +63,7 @@ it, so routing, quotas and approvals exist in one place only.
 | [Command line](cli.html) | You work in a terminal | 1.1.0 on PyPI (`cadre-ai`) |
 | [AI editors (MCP)](mcp.html) | Claude Code, VS Code, Cursor, Windsurf or Antigravity should start runs | from PyPI: tools called in Claude Code; found by VS Code's MCP client |
 | [GitHub Action](github-action.html) | An issue labelled `cadre` should become a pull request | `uses: Daemon-VI/cadre@v1`; tested on a real repository |
-| [VS Code extension](vscode.html) | You want runs, usage and approvals inside the editor | not yet published |
+| [VS Code extension](vscode.html) | You want runs, usage, approvals and memory inside the editor | `ext install daemon-vi.cadre-ai` (Marketplace and Open VSX) |
 | [Containers and downloads](containers.html) | A server, or a machine without Python | 1.1.0 on GHCR and the GitHub Release |
 
 ## What makes it different

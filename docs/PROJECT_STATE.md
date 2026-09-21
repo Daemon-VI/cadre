@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-20 (**1.3.0 released** — ships M14, memory across runs; `v1` moved to 1.3.0; the **VS Code extension is published** as `daemon-vi.cadre-ai`. **v1 is feature-complete; the project is in maintenance.** M13.1/M15/M16 are designed, not started.)_
+_Last updated: 2026-09-20 (**1.3.0 released** — ships M14, memory across runs; `v1` moved to 1.3.0; the **VS Code extension is published** as `daemon-vi.cadre-ai`, and **extension 1.4.0** adds five panels. **v1 is feature-complete; the project is in maintenance.** M13.1/M15/M16 are designed, not started.)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -47,6 +47,50 @@ to `@v1`, and the Marketplace page lists `v1.3.0`. Issue #12 and PR #13 closed; 
 [GHSA-3cxq-9h5r-3ccw](https://github.com/Daemon-VI/cadre/security/advisories/GHSA-3cxq-9h5r-3ccw).
 GitHub scored the suggested vector at **4.7 / Medium**, not the "Low, 4.2" the draft file used to
 claim; the file now says so. Reviewing, requesting a CVE and pressing Publish are Rithik's acts.
+
+## VS Code extension 1.4.0 — five panels (2026-09-21)
+
+Rithik asked for "a UI in VS Code" and then for all five candidate panels, shipped as 1.4.0. Each
+is an editor tab opened from the Command Palette or the Runs view's title bar: **New run…** (one
+form: org, goal, folder or none, demo, private, with Forecast), **Usage** (per-model meters against
+today's caps + a 1/7/14/30-day ledger), **Approvals** (everything waiting; Decide… only),
+**Memory** (M14 facts by scope: add, delete, decide proposals) and **Organisations** (agents,
+tools, checks, budget; edit your own org's YAML, view a template's read-only).
+
+**How it is built.** One more webview bundle (`dist/webview/panels.js`, 11.9 KB minified) serves
+all five, told which it is by the first posted view. The extension host does every API call
+(`panels.ts`) and posts plain view models built by pure functions (`panelModels.ts`); the webview
+renders them with `textContent` only. The security properties of the run view carry over and are
+tested: the token never reaches a webview; everything a panel may post is one of a fixed list of
+shapes (`protocol.isPanelMessage`) **and** one its own kind uses (`PANEL_ALLOWS`); a run is started
+on a workspace folder **by index**, never by a path the page sends; and **no panel can approve
+anything** — Decide… calls the same `Approvals.offerById` as the run view, so running code still
+needs the modal's explicit "Allow execution", and the form has no `allow_exec`. Usage meters use
+the status bar's thresholds (80% warn, 95% hot) and state their severity in words, never colour
+alone. The client gained `usage`, `org`, `memory`, `addMemory`, `removeMemory` and a `private`
+option; `commands.launchRun` now serves both the palette and the form.
+
+**Evidence.** Unit tests 72 → **103** (the protocol validator and per-kind allow-list; every view
+model; the new client calls against the fake loopback server, including that `private` becomes
+`privacy: private` while `allow_exec` still never goes; and `panels-dom.test.ts`, which runs the
+**built** bundle in a sandbox whose DOM throws on `innerHTML` and checks every button posts only an
+admitted message). eslint and both typechecks clean; `.vsix` 13 files, 41.3 KB. An integration test
+opens each panel in real VS Code (CI, under xvfb). **Rendered with real data:** `cadre serve` on the
+M14 measurement home → the compiled client → the compiled view models → the built bundle in
+headless Edge with VS Code Dark+ and Light+ theme variables: 10 models, 3 ledger rows, 2 pending
+approvals, 6 orgs, 7 memory entries. A synthetic 40/85/97% view checked the meter fills and state
+words. **Not verified:** the panels inside a real VS Code window *with a live server* — the
+integration test opens them in VS Code without one, and the rendering was Chromium with the same
+bundle, CSS and theme tokens, not VS Code's own webview host.
+
+**Found by rendering real data, and fixed.** Memory showed 5 proposals but only 2 pending
+approvals: three were orphans whose approvals had been cancelled before 1.3.0's fix, so Decide…
+could only say "already decided" and nothing could remove them. The memory panel now cross-checks
+proposals against the pending approvals; a stale one is labelled, explained and deletable. (The
+same can happen to anyone who resets `cadre.sqlite` while the memory files survive.) Also found:
+`/quota` caps keep back the provider reserve (a 1,000-request cap reads 900) while the ledger's
+share is of the full cap — the Usage panel now says so. Groq's rolling day reports "resets in ~24h"
+in `/quota`; that number comes from the engine and was not investigated.
 
 ## VS Code extension published (2026-09-20, D4, FR-19)
 
@@ -519,7 +563,7 @@ No other account's name, no email address, and no key appears anywhere.
 | **D1** packages | **published 1.0.0** (2026-09-19; see "Published channels") | Published wheel `cadre_ai-1.0.0-py3-none-any.whl`, 146,808 bytes (earlier, on 2026-09-18, `tools/wheel_smoke.py` checked the 0.1.0 wheel in a clean venv: `cadre` and `cadre-ai` both work, and the demo run succeeded). `release.yml`: TestPyPI → PyPI by trusted publishing, three-OS PyInstaller builds with a smoke test, and a GHCR image smoke-tested for uid 10001 and a demo run |
 | **D2** MCP | **verified from PyPI** in Claude Code 2.1.278 and VS Code 1.138's MCP client (2026-09-19; see "Published channels"). Before that: | Six MCP tests. Real stdio (`tools/mcp_smoke.py`): five tools, auto-started server, token in no result. **Claude Code 2.1.276** called `cadre_list_orgs`, `cadre_forecast` and `cadre_usage` from a fixture repo. **Found:** on Windows, the SDK client and Claude Code put stdio servers in a kill-on-close job object, so an auto-started `cadre serve` dies with the session. Breakaway is refused, and escaping via WMI was rejected as evasion-like. The start-run result now says so and points to `cadre resume` (ADR-027) |
 | **D3** Action | **verified 2026-09-19** | See "D3 on a real repository" below. Built: `action.yml` (composite; engine from the action's own source), `examples/github-action/cadre.yml` (OWNER, MEMBER or COLLABORATOR only; contents, pull-requests and issues write), `provider add-from-env`, `run --result-json`; test of the PR body, parked comment and trigger rules. Real runs: PRs #2, #3 and (through `@v1`) #5 on `cadre-action-demo` |
-| **D4** VS Code extension | **seen on screen 2026-09-19**, not published | `editors/vscode`: no runtime dependencies. `tsc` and `eslint` clean (eslint bans innerHTML and similar), 72 of 72 unit tests (70 on 2026-09-18), `.vsix` 28.54 KB. **The integration suite passed 4 of 4 inside the installed VS Code** (isolated profile, via `CADRE_VSCODE_EXE`). The `.vsix` installed into his VS Code as `daemon-vi.cadre@0.1.0` and was uninstalled again. The agent's live API smoke test: demo run streamed, dirty tree refused, 7 exec approvals rejected, review-branch diff listed 3 files. On screen on 2026-09-19 (see "1.0.0 release"): Forecast, Start run, the live run view, the approval notification and Review branch's diff. The Runs tree itself was not looked at. Not published |
+| **D4** VS Code extension | **published 2026-09-20** as `daemon-vi.cadre-ai` (1.3.0); **1.4.0 (2026-09-21) adds five panels** | `editors/vscode`: no runtime dependencies. `tsc` and `eslint` clean (eslint bans innerHTML and similar), 72 of 72 unit tests (70 on 2026-09-18), `.vsix` 28.54 KB. **The integration suite passed 4 of 4 inside the installed VS Code** (isolated profile, via `CADRE_VSCODE_EXE`). The `.vsix` installed into his VS Code as `daemon-vi.cadre@0.1.0` and was uninstalled again. The agent's live API smoke test: demo run streamed, dirty tree refused, 7 exec approvals rejected, review-branch diff listed 3 files. On screen on 2026-09-19 (see "1.0.0 release"): Forecast, Start run, the live run view, the approval notification and Review branch's diff. The Runs tree itself was not looked at. Published 2026-09-20 (see "VS Code extension published"); panels in 1.4.0 (see "VS Code extension 1.4.0") |
 | **D5** docs site | **live** | `site/`: nine pages; `build.py` generates them with markdown-it and no framework, pulling the M5/M11 tables from this file at build time. 186 internal links resolve; all pages returned 200 locally; 137,850 bytes. The replay is run `20260917-230536-aa0587` (54 events, 14 calls, 145.76 s) and the scrub check is clean. **Live since 2026-09-19** at daemon-vi.github.io/cadre (every page returns 200) |
 | **D6** desktop | skipped | Rithik's decision, 2026-09-18 |
 | **D7** hosted | deferred | Stays behind M12 and M13 (ROADMAP) |

@@ -10,6 +10,8 @@ import { ApiError, CadreClient, readTokenFile, ServerUnreachable, TokenMissing }
 import { Approvals } from "./approvals";
 import { tokenPath, validPort } from "./cli";
 import * as cmd from "./commands";
+import { OrgContent, ORG_SCHEME } from "./orgDocs";
+import { Panels } from "./panels";
 import { RunPanels } from "./runPanel";
 import { GitContent, reviewBranch, SCHEME } from "./review";
 import { RunNode, RunsProvider } from "./runsView";
@@ -61,6 +63,7 @@ export function activate(context: vscode.ExtensionContext): void {
     approvals: (id) => void approvals.review(id).then(() => panels.poke(id)),
     approval: (aid) => void approvals.offerById(aid).then(() => panels.poke()),
   }, out);
+  const views = new Panels(context.extensionUri, { cmd: deps, approvals });
 
   // ---------------------------------------------------------------- status bar
   const bar = vscode.window.createStatusBarItem("cadre.usage", vscode.StatusBarAlignment.Left, 50);
@@ -87,6 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
   approvals.onDidChange(() => {
     paint();
     panels.poke();
+    views.refresh("approvals", "memory"); // a memory proposal is an approval too
   });
 
   // ---------------------------------------------------------------- poller
@@ -180,6 +184,11 @@ export function activate(context: vscode.ExtensionContext): void {
       void tick();
     }
   });
+  register("cadre.showUsage", () => views.show("usage"));
+  register("cadre.showApprovals", () => views.show("approvals"));
+  register("cadre.newRun", () => views.show("start"));
+  register("cadre.showMemory", () => views.show("memory"));
+  register("cadre.showOrgs", () => views.show("orgs"));
   register("cadre.cancelRun", async (arg) => {
     const id = runIdOf(arg) ?? (await cmd.pickRun(deps, "Cancel which run?"));
     if (id) await cmd.cancelRun(deps, id);
@@ -198,8 +207,10 @@ export function activate(context: vscode.ExtensionContext): void {
     runs,
     approvals,
     panels,
+    views,
     bar,
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, new GitContent()),
+    vscode.workspace.registerTextDocumentContentProvider(ORG_SCHEME, new OrgContent(client)),
     tree.onDidChangeVisibility((e) => {
       if (e.visible) void tick();
     }),

@@ -48,6 +48,21 @@ const server = http.createServer((req, res) => {
       }
       case "POST /api/v1/forecast":
         return json(422, { detail: [{ loc: ["body", "goal"], msg: "Field required", type: "missing" }] });
+      case "GET /api/v1/usage":
+        return json(200, [{ day: "2026-09-20", provider: "groq", model: "m", requests: 5, tokens: 900, rpd: 1000,
+          tpd: 200000, share: 0.005, next_reset: "" }]);
+      case "GET /api/v1/orgs/decision-board":
+        return json(200, { name: "decision-board", source: "template", valid: true, yaml: "name: decision-board\n" });
+      case "GET /api/v1/memory":
+        return json(200, { entries: [{ id: "m-1", text: "t", scope: "global", tags: [], source: "human",
+          date: "2026-09-20", by: "owner", pinned: false, private: false, approved: true }], skipped: [], scopes: ["global"] });
+      case "POST /api/v1/memory": {
+        const b = JSON.parse(body);
+        if (/gsk_/.test(b.text)) return json(422, { detail: "that looks like an API key; refusing to store it (the value is not echoed)" });
+        return json(200, { id: "m-new", ...b, source: "human", date: "2026-09-21", by: "owner", approved: true });
+      }
+      case "DELETE /api/v1/memory/m-1":
+        return json(200, { id: "m-1", removed: true });
       case "GET /api/v1/runs/r1/stream": {
         res.writeHead(200, { "content-type": "text/event-stream" });
         const text = [
@@ -203,4 +218,47 @@ test("detailMessage covers the shapes FastAPI returns", () => {
   assert.equal(detailMessage("host not allowed", 421), "host not allowed");
   assert.match(detailMessage(undefined, 401), /rejected the token/);
   assert.equal(detailMessage({}, 500), "HTTP 500");
+});
+
+// ------------------------------------------------------------------ extension 1.4.0 (the panels)
+test("usage, org, memory and removeMemory call the right paths with the token", async () => {
+  seen.length = 0;
+  const c = client();
+  assert.equal((await c.usage(14))[0].requests, 5);
+  assert.equal((await c.org("decision-board")).yaml, "name: decision-board\n");
+  assert.equal((await c.memory()).entries[0].id, "m-1");
+  assert.deepEqual(await c.removeMemory("m-1"), { id: "m-1", removed: true });
+  assert.deepEqual(seen.map((s) => `${s.method} ${s.url}`), [
+    "GET /api/v1/usage?days=14", "GET /api/v1/orgs/decision-board", "GET /api/v1/memory?pending=true",
+    "DELETE /api/v1/memory/m-1",
+  ]);
+  assert.ok(seen.every((s) => s.auth === `Bearer ${TOKEN_A}`));
+});
+
+test("addMemory sends exactly scope, text, tags, pinned and private", async () => {
+  seen.length = 0;
+  const extra = { scope: "global", text: "tests run with pytest", pinned: true, approve: true, by: "admin" } as never;
+  const e = await client().addMemory(extra);
+  assert.equal(e.id, "m-new");
+  assert.deepEqual(JSON.parse(seen[0].body), { scope: "global", text: "tests run with pytest", tags: [], pinned: true, private: false });
+});
+
+test("a key-shaped fact is refused with the server's words, which never echo the key", async () => {
+  const key = "gsk_" + "A1".repeat(26);
+  await assert.rejects(client().addMemory({ scope: "global", text: `my key is ${key}` }), (e: unknown) => {
+    assert.ok(e instanceof ApiError && e.status === 422);
+    assert.match((e as Error).message, /looks like an API key/);
+    assert.ok(!(e as Error).message.includes(key));
+    return true;
+  });
+});
+
+test("private becomes privacy: private on startRun and forecast, and allow_exec still never goes", async () => {
+  seen.length = 0;
+  const sneaky = { org: "o", goal: "g", private: true, allow_exec: true, auto_approve: true } as never;
+  await client().startRun(sneaky);
+  assert.deepEqual(JSON.parse(seen[0].body), { org: "o", goal: "g", privacy: "private" });
+  seen.length = 0;
+  await assert.rejects(client().forecast({ org: "o", goal: "g", private: true }));
+  assert.deepEqual(JSON.parse(seen[0].body), { org: "o", goal: "g", privacy: "private" });
 });

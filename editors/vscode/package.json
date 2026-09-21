@@ -2,7 +2,7 @@
   "name": "cadre-ai",
   "displayName": "Cadre AI",
   "description": "Run an organisation of AI agents on your free model keys: watch runs live, approve gates, review the branch a run wrote.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "daemon-vi",
   "icon": "media/icon.png",
   "license": "Apache-2.0",
@@ -149,6 +149,36 @@
         "title": "Resume run",
         "category": "Cadre",
         "icon": "$(debug-continue)"
+      },
+      {
+        "command": "cadre.newRun",
+        "title": "New run…",
+        "category": "Cadre",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "cadre.showUsage",
+        "title": "Show usage",
+        "category": "Cadre",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "cadre.showApprovals",
+        "title": "Show approvals",
+        "category": "Cadre",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "cadre.showMemory",
+        "title": "Show memory",
+        "category": "Cadre",
+        "icon": "$(book)"
+      },
+      {
+        "command": "cadre.showOrgs",
+        "title": "Browse organisations",
+        "category": "Cadre",
+        "icon": "$(organization)"
       }
     ],
     "menus": {
@@ -182,6 +212,31 @@
           "command": "cadre.openDashboard",
           "when": "view == cadre.runs",
           "group": "2_setup@2"
+        },
+        {
+          "command": "cadre.newRun",
+          "when": "view == cadre.runs",
+          "group": "navigation@2"
+        },
+        {
+          "command": "cadre.showUsage",
+          "when": "view == cadre.runs",
+          "group": "navigation@3"
+        },
+        {
+          "command": "cadre.showApprovals",
+          "when": "view == cadre.runs",
+          "group": "1_run@3"
+        },
+        {
+          "command": "cadre.showMemory",
+          "when": "view == cadre.runs",
+          "group": "1_run@4"
+        },
+        {
+          "command": "cadre.showOrgs",
+          "when": "view == cadre.runs",
+          "group": "2_setup@3"
         }
       ],
       "view/item/context": [

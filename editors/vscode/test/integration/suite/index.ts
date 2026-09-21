@@ -43,6 +43,31 @@ test("the review content provider refuses an option-like ref", async () => {
   assert.equal(doc.getText(), "");
 });
 
+test("1.4.0: each panel command opens its own webview, once, even with no server", async () => {
+  await extension();
+  const cfg = vscode.workspace.getConfiguration("cadre");
+  // No server in CI: with auto-start off the panel asks (and waits) instead of downloading one.
+  await cfg.update("autoStart", false, vscode.ConfigurationTarget.Global);
+  try {
+    const panels: [string, string][] = [
+      ["cadre.showUsage", "Cadre · Usage"], ["cadre.showApprovals", "Cadre · Approvals"],
+      ["cadre.newRun", "Cadre · New run"], ["cadre.showMemory", "Cadre · Memory"],
+      ["cadre.showOrgs", "Cadre · Organisations"],
+    ];
+    const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs);
+    for (const [command, title] of panels) {
+      await vscode.commands.executeCommand(command);
+      assert.ok(tabs().some((t) => t.label === title && t.input instanceof vscode.TabInputWebview),
+        `${command} opened a webview titled "${title}"`);
+    }
+    await vscode.commands.executeCommand("cadre.showUsage");
+    assert.equal(tabs().filter((t) => t.label === "Cadre · Usage").length, 1, "a second call reveals the same panel");
+  } finally {
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    await cfg.update("autoStart", undefined, vscode.ConfigurationTarget.Global);
+  }
+});
+
 export async function run(): Promise<void> {
   let failed = 0;
   for (const [name, fn] of tests) {

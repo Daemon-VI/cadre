@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
-import { contentSecurityPolicy, makeNonce, runPanelHtml } from "../../src/html";
+import { contentSecurityPolicy, makeNonce, panelHtml, runPanelHtml } from "../../src/html";
 import { isWebviewMessage } from "../../src/protocol";
 
 const ROOT = path.resolve(__dirname, "..", "..", "..");
@@ -59,4 +59,20 @@ test("no source file parses text as HTML", () => {
   };
   walk(path.join(ROOT, "src"));
   assert.deepEqual(offenders, []);
+});
+
+test("a panel document: the same CSP, one nonce'd script, both stylesheets, an escaped title", () => {
+  const nonce = makeNonce();
+  const html = panelHtml({
+    cspSource: "vscode-src", nonce, scriptUri: "vscode-src/panels.js",
+    styleUris: ["vscode-src/run.css", "vscode-src/panels.css"], title: 'Cadre · <Usage> & "more"',
+  });
+  const scripts = html.match(/<script\b[^>]*>/g) ?? [];
+  assert.equal(scripts.length, 1);
+  assert.ok(scripts[0].includes(`nonce="${nonce}"`) && scripts[0].includes('src="vscode-src/panels.js"'));
+  assert.ok(/<script[^>]*><\/script>/.test(html), "no inline code");
+  assert.ok(html.includes(contentSecurityPolicy("vscode-src", nonce).replace(/'/g, "'")));
+  assert.equal((html.match(/<link rel="stylesheet"/g) ?? []).length, 2);
+  assert.ok(html.includes("<title>Cadre · &lt;Usage&gt; &amp; &quot;more&quot;</title>"));
+  assert.ok(!/<style\b/.test(html) && !/\sstyle=/.test(html), "no inline style");
 });

@@ -34,6 +34,27 @@ Windsurf and Antigravity install from.
   - *Open dashboard* — the full web dashboard in your browser.
   - *Review pending approvals*, *Cancel run*, *Resume run*, *Start server*.
 
+## Panels (since 1.4.0)
+
+Five editor tabs, each opened from the Command Palette or from the Runs view's title bar:
+
+- **New run…** — one form instead of a string of prompts: organisation (with its description and
+  checks), goal, which folder to work on (or none — a fresh workspace), the offline demo model,
+  and *private* (only providers that don't train on prompts). **Forecast** shows whether the goal
+  fits in today's free quota before you spend any of it. The form keeps a half-typed goal when
+  you switch tabs.
+- **Usage** — every model's spend today against its daily caps, as meters that say their value
+  and their state in words ("near the cap", "at the cap"), plus a ledger for the last 1, 7, 14 or
+  30 days with totals. It refreshes itself while it is on screen.
+- **Approvals** — everything waiting for you, oldest first. **Decide…** opens exactly the same
+  dialog a notification would; nothing is approved from the page itself.
+- **Memory** — the facts Cadre remembers across runs (M14), grouped by scope: add one, delete
+  one, and decide a model's proposals. A proposal whose approval has closed is marked as such and
+  can be deleted.
+- **Organisations** — your organisations and the built-in templates: agents, roles, tools,
+  checks and budget. **Edit YAML** opens your own organisation's file; a template opens
+  read-only. **New run with this org** fills in the form.
+
 With no model key yet, a run can use Cadre's offline demo model, which exercises the whole
 workflow (not real intelligence) so you can see how it behaves.
 
@@ -75,10 +96,15 @@ The server's home is `CADRE_HOME` (default `~/.cadre`). If you run Cadre with a 
   keyboard focus, so nothing typed into another window can answer it. **Review…** opens a modal
   dialog that shows each check's name and its exact command from the organisation file; only an
   explicit **Allow execution** click approves. Closing the dialog decides nothing (the run keeps waiting); **Reject** rejects.
-- **The run view** is a webview with a strict Content Security Policy: one script, identified by
-  a per-load nonce, from the extension itself; no remote resources; no network access. All text
-  an agent wrote is inserted as text (`textContent`), never parsed as HTML. The webview receives
-  run data by message from the extension and never sees the token.
+- **The run view and the panels** are webviews with a strict Content Security Policy: one
+  script, identified by a per-load nonce, from the extension itself; no remote resources; no
+  network access. All text an agent wrote is inserted as text (`textContent`), never parsed as
+  HTML. A webview receives data by message from the extension and never sees the token.
+- **What a panel can ask for** is a short, fixed list of message shapes, checked in the extension
+  before anything happens, and each panel may only send the ones it uses. A panel starts a run on
+  a workspace folder *by its position in the list*, never by a path it supplies. None of them can
+  approve anything: **Decide…** hands the approval to the same dialog as a notification, and the
+  new-run form has no way to pre-approve running code.
 - **Notifications** that quote an agent (a question, a gate) have Markdown link syntax broken up,
   so model text cannot become a clickable command link.
 - **Open dashboard** runs `cadre ui`, which opens the browser with the token in the URL
