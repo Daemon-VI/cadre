@@ -1,6 +1,6 @@
 # Cadre — Project State
 
-_Last updated: 2026-09-20 (**1.3.0 released** — ships M14, memory across runs; `v1` moved to 1.3.0; the **VS Code extension is published** as `daemon-vi.cadre-ai`, and **extension 1.4.0** adds five panels. **v1 is feature-complete; the project is in maintenance.** M13.1/M15/M16 are designed, not started.)_
+_Last updated: 2026-09-21 (**1.3.0 released** — ships M14, memory across runs; `v1` moved to 1.3.0; the **VS Code extension is published** as `daemon-vi.cadre-ai`, and **extension 1.4.0**, published 2026-09-21 to both registries, adds five panels. **v1 is feature-complete; the project is in maintenance.** M13.1/M15/M16 are designed, not started.)_
 
 ## What this is
 A self-hosted platform that runs an organisation of AI agents — builders, reviewers, verifiers,
@@ -57,7 +57,13 @@ today's caps + a 1/7/14/30-day ledger), **Approvals** (everything waiting; Decid
 **Memory** (M14 facts by scope: add, delete, decide proposals) and **Organisations** (agents,
 tools, checks, budget; edit your own org's YAML, view a template's read-only).
 
-**How it is built.** One more webview bundle (`dist/webview/panels.js`, 11.9 KB minified) serves
+**Published 2026-09-21** from the `vscode-v1.4.0` tag on `f8cf4ce`, run `35561751673`:
+`Packaged: cadre.vsix (13 files, 43.16 KB)`, `Published daemon-vi.cadre-ai v1.4.0` (Marketplace)
+and `🚀 Published daemon-vi.cadre-ai v1.4.0` (Open VSX); both registries' APIs then reported
+1.4.0 as the current version. The `.vsix` downloaded back from Open VSX declares 1.4.0 and its
+`panels.js` contains the audit fixes below.
+
+**How it is built.** One more webview bundle (`dist/webview/panels.js`, 12.55 KB minified) serves
 all five, told which it is by the first posted view. The extension host does every API call
 (`panels.ts`) and posts plain view models built by pure functions (`panelModels.ts`); the webview
 renders them with `textContent` only. The security properties of the run view carry over and are
@@ -70,12 +76,16 @@ the status bar's thresholds (80% warn, 95% hot) and state their severity in word
 alone. The client gained `usage`, `org`, `memory`, `addMemory`, `removeMemory` and a `private`
 option; `commands.launchRun` now serves both the palette and the form.
 
-**Evidence.** Unit tests 72 → **103** (the protocol validator and per-kind allow-list; every view
+**Evidence.** Unit tests 72 → **104** (the protocol validator and per-kind allow-list; every view
 model; the new client calls against the fake loopback server, including that `private` becomes
 `privacy: private` while `allow_exec` still never goes; and `panels-dom.test.ts`, which runs the
 **built** bundle in a sandbox whose DOM throws on `innerHTML` and checks every button posts only an
-admitted message). eslint and both typechecks clean; `.vsix` 13 files, 41.3 KB. An integration test
-opens each panel in real VS Code (CI, under xvfb). **Rendered with real data:** `cadre serve` on the
+admitted message). eslint and both typechecks clean. An integration test opens each panel in real
+VS Code (CI, under xvfb): its first run (`35560849183`) failed because the workbench's tab model
+updates a moment after `createWebviewPanel` returns, so the test now polls for the tab for up to
+5 s (`999e7bc`); it passed 5/5 in run `35561002667` and again in the publish run. **Rendered with
+real data** (the bundle as of the stale-proposal fix; the audit fixes below came after and are
+covered by the unit and DOM tests, not re-rendered): `cadre serve` on the
 M14 measurement home → the compiled client → the compiled view models → the built bundle in
 headless Edge with VS Code Dark+ and Light+ theme variables: 10 models, 3 ledger rows, 2 pending
 approvals, 6 orgs, 7 memory entries. A synthetic 40/85/97% view checked the meter fills and state
@@ -91,6 +101,14 @@ same can happen to anyone who resets `cadre.sqlite` while the memory files survi
 `/quota` caps keep back the provider reserve (a 1,000-request cap reads 900) while the ledger's
 share is of the full cap — the Usage panel now says so. Groq's rolling day reports "resets in ~24h"
 in `/quota`; that number comes from the engine and was not investigated.
+
+**Audited before publishing, and fixed (`f8cf4ce`).** The audit found no overstated security
+claim. It did find: the Usage panel stopped refreshing itself after one tick with the server down
+(it now reschedules until the server is back, and stops when the panel closes); the New run form's
+folder was kept by position, so adding a workspace folder could silently move a run to a different
+one (it now follows the chosen folder by name, keeps "no folder", and falls back to none when the
+workspace is untrusted); a forecast's text repeated its "Forecast:" heading; an unused `items`
+getter in `approvals.ts`; and README/CHANGELOG/site wording and test counts that had drifted.
 
 ## VS Code extension published (2026-09-20, D4, FR-19)
 
